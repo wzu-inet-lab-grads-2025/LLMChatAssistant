@@ -86,18 +86,18 @@
 
 ### 2.6 网络通信基础
 
-- [ ] T030 在 src/server/nplt_server.py 中实现 NPLT 服务器端协议处理
-- [ ] T031 在 src/server/nplt_server.py 中实现 TCP 心跳机制 (90 秒间隔)
-- [ ] T032 在 src/server/nplt_server.py 中实现会话管理 (Session 类)
-- [ ] T033 在 src/server/rdt_server.py 中实现 RDT 发送方，滑动窗口 N=5 (参考 contracts/rdt-protocol.md)
-- [ ] T034 在 src/server/rdt_server.py 中实现超时重传机制 (仅对 SendBase 计时)
+- [X] T030 在 src/server/nplt_server.py 中实现 NPLT 服务器端协议处理
+- [X] T031 在 src/server/nplt_server.py 中实现 TCP 心跳机制 (90 秒间隔)
+- [X] T032 在 src/server/nplt_server.py 中实现会话管理 (Session 类)
+- [X] T033 在 src/server/rdt_server.py 中实现 RDT 发送方，滑动窗口 N=5 (参考 contracts/rdt-protocol.md)
+- [X] T034 在 src/server/rdt_server.py 中实现超时重传机制 (仅对 SendBase 计时)
 
 ### 2.7 客户端基础
 
-- [ ] T035 在 src/client/ui.py 中实现 Rich UI 组件 (启动画面、Spinner、Markdown 渲染)
-- [ ] T036 在 src/client/nplt_client.py 中实现 NPLT 客户端端协议处理
-- [ ] T037 在 src/client/nplt_client.py 中实现 TCP 连接管理和重连 (最多 3 次)
-- [ ] T038 在 src/client/main.py 中实现客户端主循环和命令解析 (/upload, /model, /quit)
+- [X] T035 在 src/client/ui.py 中实现 Rich UI 组件 (启动画面、Spinner、Markdown 渲染)
+- [X] T036 在 src/client/nplt_client.py 中实现 NPLT 客户端端协议处理
+- [X] T037 在 src/client/nplt_client.py 中实现 TCP 连接管理和重连 (最多 3 次)
+- [X] T038 在 src/client/main.py 中实现客户端主循环和命令解析 (/upload, /model, /quit)
 
 ---
 
