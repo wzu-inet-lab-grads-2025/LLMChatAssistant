@@ -248,24 +248,56 @@ class ClientMain:
             self.ui.print_info(f"可用模型: {', '.join(available_models)}")
             return
 
-        # 切换模型
-        # TODO: 发送模型切换请求到服务器
-        self.current_model = model
-        self.logger.info(f"模型已切换: {model}")
-        self.ui.print_success(f"已切换模型: {model}")
+        # 发送模型切换请求到服务器
+        import json
+        from ..protocols.nplt import MessageType
+
+        model_data = json.dumps({"model": model})
+        success = await self.client.send_message(
+            MessageType.MODEL_SWITCH,
+            model_data.encode('utf-8')
+        )
+
+        if success:
+            self.current_model = model
+            self.logger.info(f"模型切换请求已发送: {model}")
+            self.ui.print_success(f"模型切换请求已发送: {model}")
+        else:
+            self.logger.error(f"发送模型切换请求失败: {model}")
+            self.ui.print_error(f"发送模型切换请求失败")
 
     async def _command_history(self):
         """处理 /history 命令"""
-        # TODO: 从服务器获取对话历史
-        self.ui.print_info("对话历史功能（待实现）")
+        from ..protocols.nplt import MessageType
+
+        # 发送历史记录请求到服务器
+        success = await self.client.send_message(
+            MessageType.HISTORY_REQUEST,
+            b""
+        )
+
+        if not success:
+            self.logger.error("发送历史记录请求失败")
+            self.ui.print_error("获取历史记录失败")
 
     async def _command_clear(self):
         """处理 /clear 命令"""
-        # TODO: 清空本地对话历史
-        self.logger.info("清空对话历史")
-        self.ui.clear()
-        self.ui.show_welcome()
-        self.ui.print_info("对话历史已清空")
+        from ..protocols.nplt import MessageType
+
+        # 发送清空请求到服务器
+        success = await self.client.send_message(
+            MessageType.CLEAR_REQUEST,
+            b""
+        )
+
+        if success:
+            self.logger.info("清空对话历史请求已发送")
+            self.ui.clear()
+            self.ui.show_welcome()
+            self.ui.print_info("对话历史已清空")
+        else:
+            self.logger.error("发送清空请求失败")
+            self.ui.print_error("清空对话历史失败")
 
     async def _handle_download_offer(self, offer_data: dict):
         """处理下载提议

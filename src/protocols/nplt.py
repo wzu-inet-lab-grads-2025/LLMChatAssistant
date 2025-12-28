@@ -24,6 +24,9 @@ class MessageType(IntEnum):
     DOWNLOAD_OFFER = 0x0C     # 文件下载提议
     FILE_DATA = 0x0D          # 文件数据（上传/下载）
     FILE_METADATA = 0x0E      # 文件元数据（文件名、大小等）
+    MODEL_SWITCH = 0x0F       # 模型切换请求
+    HISTORY_REQUEST = 0x10    # 历史记录请求
+    CLEAR_REQUEST = 0x11      # 清空会话请求
 
 
 @dataclass

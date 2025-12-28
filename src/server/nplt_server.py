@@ -304,6 +304,18 @@ class NPLTServer:
                 # 文件数据
                 await self._handle_file_data(session, message)
 
+            elif message.type == MessageType.MODEL_SWITCH:
+                # 模型切换请求
+                await self._handle_model_switch(session, message)
+
+            elif message.type == MessageType.HISTORY_REQUEST:
+                # 历史记录请求
+                await self._handle_history_request(session, message)
+
+            elif message.type == MessageType.CLEAR_REQUEST:
+                # 清空会话请求
+                await self._handle_clear_request(session, message)
+
             else:
                 print(f"[WARN] [SERVER] 未知消息类型: {message.type}")
 
@@ -443,6 +455,102 @@ class NPLTServer:
     def get_active_sessions_count(self) -> int:
         """获取活跃会话数"""
         return len(self.sessions)
+
+    async def _handle_model_switch(self, session: Session, message: NPLTMessage):
+        """处理模型切换请求"""
+        try:
+            import json
+
+            # 解析请求
+            request = json.loads(message.data.decode('utf-8'))
+            model = request.get('model', '')
+
+            print(f"[INFO] [SERVER] 模型切换请求: {model}")
+
+            # 验证模型名称
+            available_models = ["glm-4-flash", "glm-4.5-flash"]
+            if model not in available_models:
+                await session.send_message(
+                    MessageType.CHAT_TEXT,
+                    f"无效的模型: {model}".encode('utf-8')
+                )
+                return
+
+            # 切换模型（注意：这里需要访问 LLM Provider）
+            # 由于 NPLTServer 没有直接访问 LLM Provider，我们通过外部设置回调来处理
+            if hasattr(self, 'model_switch_callback') and self.model_switch_callback:
+                self.model_switch_callback(model)
+
+            # 发送确认
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                f"模型已切换: {model}".encode('utf-8')
+            )
+
+            print(f"[INFO] [SERVER] 模型已切换: {model}")
+
+        except Exception as e:
+            print(f"[ERROR] [SERVER] 处理模型切换失败: {e}")
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                f"模型切换失败: {str(e)}".encode('utf-8')
+            )
+
+    async def _handle_history_request(self, session: Session, message: NPLTMessage):
+        """处理历史记录请求"""
+        try:
+            if not session.conversation_history:
+                await session.send_message(
+                    MessageType.CHAT_TEXT,
+                    "暂无对话历史".encode('utf-8')
+                )
+                return
+
+            # 获取历史记录
+            messages = session.conversation_history.get_context(num_messages=20)
+
+            # 格式化历史记录
+            history_text = "\n\n=== 对话历史 ===\n\n"
+            for msg in messages:
+                role = "用户" if msg["role"] == "user" else "助手"
+                history_text += f"{role}: {msg['content']}\n\n"
+
+            # 发送历史记录
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                history_text.encode('utf-8')
+            )
+
+            print(f"[INFO] [SERVER] 发送历史记录: {len(messages)} 条消息")
+
+        except Exception as e:
+            print(f"[ERROR] [SERVER] 处理历史记录请求失败: {e}")
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                f"获取历史记录失败: {str(e)}".encode('utf-8')
+            )
+
+    async def _handle_clear_request(self, session: Session, message: NPLTMessage):
+        """处理清空会话请求"""
+        try:
+            # 清空会话历史
+            if session.conversation_history:
+                session.conversation_history.clear()
+
+            # 发送确认
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                "会话历史已清空".encode('utf-8')
+            )
+
+            print(f"[INFO] [SERVER] 会话历史已清空: {session.session_id[:8]}")
+
+        except Exception as e:
+            print(f"[ERROR] [SERVER] 清空会话历史失败: {e}")
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                f"清空失败: {str(e)}".encode('utf-8')
+            )
 
 
 # NPLTMessage.decode_header 是一个辅助方法，用于解码头部
