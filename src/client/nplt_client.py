@@ -32,7 +32,7 @@ class NPLTClient:
     recv_seq: int = 0
     retry_count: int = 0
 
-    # UI
+    # UI 组件
     ui: ClientUI = None
 
     # 消息处理器

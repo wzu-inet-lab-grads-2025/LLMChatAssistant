@@ -305,3 +305,113 @@ class TestAgentFallback:
         # 应该降级到本地模式
         assert isinstance(response, str)
         assert len(response) > 0
+
+
+@pytest.mark.skipif(
+    not os.getenv("ZHIPU_API_KEY"),
+    reason="需要 ZHIPU_API_KEY 环境变量"
+)
+@pytest.mark.asyncio
+class TestAgentPerformance:
+    """Agent 性能测试"""
+
+    async def test_tool_call_response_time(self):
+        """测试 AI 工具调用响应时间 < 2s（参考 SC-002）
+
+        验收标准：
+        - 工具调用响应时间（从用户输入到工具状态显示）< 2s
+        """
+        import time
+
+        llm_provider = ZhipuProvider(
+            api_key=os.getenv("ZHIPU_API_KEY"),
+            model="glm-4-flash"
+        )
+
+        agent = ReActAgent(llm_provider=llm_provider)
+        history = ConversationHistory.create_new("test-session")
+
+        # 测试多个工具调用的响应时间
+        test_queries = [
+            "查看 CPU 使用率",
+            "检查内存使用情况",
+            "列出当前目录文件"
+        ]
+
+        response_times = []
+
+        for query in test_queries:
+            start_time = time.time()
+
+            # 执行 Agent 反应循环
+            response, tool_calls = agent.react_loop(
+                user_message=query,
+                conversation_history=history
+            )
+
+            end_time = time.time()
+            response_time = end_time - start_time
+            response_times.append(response_time)
+
+            print(f"\n查询: {query}")
+            print(f"响应时间: {response_time:.2f}s")
+
+            # 每次查询都应该在 2 秒内完成
+            assert response_time < 2.0, f"工具调用响应时间过长: {response_time:.2f}s >= 2s"
+
+            # 更新对话历史
+            history.add_message("user", query)
+            if response:
+                history.add_message("assistant", response)
+
+        # 验证平均响应时间
+        avg_response_time = sum(response_times) / len(response_times)
+        print(f"\n平均响应时间: {avg_response_time:.2f}s")
+
+        # 平均响应时间也应该 < 2s
+        assert avg_response_time < 2.0, f"平均工具调用响应时间过长: {avg_response_time:.2f}s >= 2s"
+
+    async def test_tool_execution_time(self):
+        """测试工具执行时间性能
+
+        验收标准：
+        - 每个工具执行时间 < 5s（工具超时限制）
+        - 平均工具执行时间合理
+        """
+        import time
+
+        llm_provider = ZhipuProvider(
+            api_key=os.getenv("ZHIPU_API_KEY"),
+            model="glm-4-flash"
+        )
+
+        agent = ReActAgent(llm_provider=llm_provider)
+        history = ConversationHistory.create_new("test-session")
+
+        # 触发工具调用
+        response, tool_calls = agent.react_loop(
+            user_message="帮我查看系统状态，包括 CPU、内存和磁盘使用情况",
+            conversation_history=history
+        )
+
+        # 验证工具执行时间
+        if tool_calls:
+            execution_times = []
+            for call in tool_calls:
+                assert hasattr(call, 'duration'), "工具调用缺少 duration 字段"
+                execution_times.append(call.duration)
+
+                # 验证单个工具执行时间 < 5s
+                assert call.duration < 5.0, f"工具执行时间过长: {call.duration:.2f}s >= 5s"
+                print(f"\n工具: {call.tool_name}")
+                print(f"执行时间: {call.duration:.2f}s")
+                print(f"状态: {call.status}")
+
+            # 验证平均执行时间
+            avg_execution_time = sum(execution_times) / len(execution_times)
+            print(f"\n平均工具执行时间: {avg_execution_time:.2f}s")
+
+            # 平均执行时间应该合理（< 3s）
+            assert avg_execution_time < 3.0, f"平均工具执行时间过长: {avg_execution_time:.2f}s >= 3s"
+        else:
+            print("没有触发工具调用，跳过执行时间验证")

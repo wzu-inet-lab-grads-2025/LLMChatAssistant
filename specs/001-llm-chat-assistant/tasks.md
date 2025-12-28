@@ -195,23 +195,23 @@
 
 ### 用户故事 3 的测试(必需)⚠️
 
-- [ ] T066 [P] [US3] 在 tests/contract/test_rdt.py 中编写 RDT 协议编解码测试
-- [ ] T067 [P] [US3] 在 tests/contract/test_rdt.py 中编写滑动窗口机制测试
-- [ ] T068 [US3] 在 tests/integration/test_rdt.py 中编写文件传输集成测试 (模拟丢包)
+- [X] T066 [P] [US3] 在 tests/contract/test_rdt.py 中编写 RDT 协议编解码测试
+- [X] T067 [P] [US3] 在 tests/contract/test_rdt.py 中编写滑动窗口机制测试
+- [X] T068 [US3] 在 tests/integration/test_rdt.py 中编写文件传输集成测试 (模拟丢包)
 
 ### 用户故事 3 的实施
 
-- [ ] T069 [US3] 在 src/protocols/rdt.py 中实现 RDTSession 类，管理传输状态
-- [ ] T070 [US3] 在 src/server/rdt_server.py 中实现文件发送逻辑 (读取文件、分片、发送)
-- [ ] T071 [US3] 在 src/server/rdt_server.py 中实现下载令牌生成和关联 (TCP 提议 → UDP 传输)
-- [ ] T072 [US3] 在 src/server/nplt_server.py 中实现 DOWNLOAD_OFFER 消息发送
-- [ ] T073 [US3] 在 src/client/rdt_client.py 中实现 RDT 接收方逻辑
-- [ ] T074 [US3] 在 src/client/rdt_client.py 中实现 ACK 发送和序列号管理
-- [ ] T075 [US3] 在 src/client/rdt_client.py 中实现数据包组装和文件写入
-- [ ] T076 [US3] 在 src/client/main.py 中实现下载确认提示 (显示文件名、大小，等待用户输入 y/n)
-- [ ] T077 [US3] 在 src/client/ui.py 中实现窗口状态可视化 (显示当前窗口包: [0] [1] [2] [3] [4])
-- [ ] T078 [US3] 在 src/client/ui.py 中实现传输进度条、速度和重传统计显示
-- [ ] T079 [US3] 在 src/client/rdt_client.py 中实现文件完整性验证 (CRC32 校验和)
+- [X] T069 [US3] 在 src/protocols/rdt.py 中实现 RDTSession 类，管理传输状态
+- [X] T070 [US3] 在 src/server/rdt_server.py 中实现文件发送逻辑 (读取文件、分片、发送)
+- [X] T071 [US3] 在 src/server/rdt_server.py 中实现下载令牌生成和关联 (TCP 提议 → UDP 传输)
+- [X] T072 [US3] 在 src/server/nplt_server.py 中实现 DOWNLOAD_OFFER 消息发送
+- [X] T073 [US3] 在 src/client/rdt_client.py 中实现 RDT 接收方逻辑
+- [X] T074 [US3] 在 src/client/rdt_client.py 中实现 ACK 发送和序列号管理
+- [X] T075 [US3] 在 src/client/rdt_client.py 中实现数据包组装和文件写入
+- [X] T076 [US3] 在 src/client/main.py 中实现下载确认提示 (显示文件名、大小，等待用户输入 y/n)
+- [X] T077 [US3] 在 src/client/ui.py 中实现窗口状态可视化 (显示当前窗口包: [0] [1] [2] [3] [4])
+- [X] T078 [US3] 在 src/client/ui.py 中实现传输进度条、速度和重传统计显示
+- [X] T079 [US3] 在 src/client/rdt_client.py 中实现文件完整性验证 (CRC32 校验和)
 
 ---
 
@@ -219,8 +219,8 @@
 
 **目的**: 确保用户故事 3 完成并通过测试后进行版本提交
 
-- [ ] T080 [US3] 运行用户故事 3 的所有测试，确保测试通过 (遵循章程: 版本控制与测试纪律)
-- [ ] T081 [US3] 提交用户故事 3 代码，描述 RDT 文件传输功能和测试结果 (遵循章程: 版本控制与测试纪律)
+- [X] T080 [US3] 运行用户故事 3 的所有测试，确保测试通过 (遵循章程: 版本控制与测试纪律)
+- [X] T081 [US3] 提交用户故事 3 代码，描述 RDT 文件传输功能和测试结果 (遵循章程: 版本控制与测试纪律)
 
 **检查点**: 所有用户故事现在应该独立功能化
 
@@ -230,20 +230,20 @@
 
 **目的**: 影响多个用户故事的改进
 
-- [ ] T082 在 src/client/main.py 中实现 /model 命令，调用 T016 实现的底层切换功能，提供用户界面（如 /model glm-4.5-flash）
-- [ ] T083 在 src/client/main.py 中实现 /history 命令，查看对话历史
-- [ ] T084 在 src/client/main.py 中实现 /clear 命令，清空当前会话历史
-- [ ] T085 在 src/server/main.py 中实现优雅关闭 (Ctrl+C 处理)
-- [ ] T086 [P] 在 tests/unit/test_tools.py 中添加工具单元测试 (CommandTool、MonitorTool、RAGTool)
-- [ ] T087 [P] 在 tests/unit/test_llm.py 中添加 LLM Provider 单元测试 (ZhipuProvider、模型切换)
-- [ ] T088 代码清理和重构，确保所有代码注释使用中文 (遵循章程: 语言规范)
-- [ ] T088a [P] 在 tests/performance/test_client_memory.py 中编写客户端长期运行测试（100+ 轮对话，验证内存泄漏和性能）
-- [ ] T088b 在 T088a 测试基础上，优化客户端 UI 渲染性能（如有内存泄漏或性能下降）
-- [ ] T089 性能优化，验证 AI 工具调用响应时间 < 2s (参考 SC-002)
-- [ ] T090 安全加固，确保命令黑名单字符过滤生效 (测试 ;、&、>、|)
-- [ ] T091 运行 quickstart.md 验证，确保所有示例可执行
-- [ ] T091a [P] 在 tests/contract/test_nplt_wire_format.py 中编写 NPLT 协议字节格式测试（验证与 contracts/nplt-protocol.md 规范一致性）
-- [ ] T091b [P] 在 tests/contract/test_rdt_wire_format.py 中编写 RDT 协议字节格式测试（验证与 contracts/rdt-protocol.md 规范一致性）
+- [X] T082 在 src/client/main.py 中实现 /model 命令，调用 T016 实现的底层切换功能，提供用户界面（如 /model glm-4.5-flash）
+- [X] T083 在 src/client/main.py 中实现 /history 命令，查看对话历史
+- [X] T084 在 src/client/main.py 中实现 /clear 命令，清空当前会话历史
+- [X] T085 在 src/server/main.py 中实现优雅关闭 (Ctrl+C 处理)
+- [X] T086 [P] 在 tests/unit/test_tools.py 中添加工具单元测试 (CommandTool、MonitorTool、RAGTool)
+- [X] T087 [P] 在 tests/unit/test_llm.py 中添加 LLM Provider 单元测试 (ZhipuProvider、模型切换)
+- [X] T088 代码清理和重构，确保所有代码注释使用中文 (遵循章程: 语言规范)
+- [X] T088a [P] 在 tests/performance/test_client_memory.py 中编写客户端长期运行测试（100+ 轮对话，验证内存泄漏和性能）
+- [X] T088b 在 T088a 测试基础上，优化客户端 UI 渲染性能（如有内存泄漏或性能下降）
+- [X] T089 性能优化，验证 AI 工具调用响应时间 < 2s (参考 SC-002)
+- [X] T090 安全加固，确保命令黑名单字符过滤生效 (测试 ;、&、>、|)
+- [X] T091 运行 quickstart.md 验证，确保所有示例可执行
+- [X] T091a [P] 在 tests/contract/test_nplt_wire_format.py 中编写 NPLT 协议字节格式测试（验证与 contracts/nplt-protocol.md 规范一致性）
+- [X] T091b [P] 在 tests/contract/test_rdt_wire_format.py 中编写 RDT 协议字节格式测试（验证与 contracts/rdt-protocol.md 规范一致性）
 
 ---
 
@@ -251,7 +251,7 @@
 
 **目的**: 确保完善阶段完成并通过测试后进行最终版本提交
 
-- [ ] T092 运行所有测试，包括完善和横切关注点的测试、性能测试（T088a）和协议格式测试（T091a, T091b），确保测试通过 (遵循章程: 版本控制与测试纪律)
+- [X] T092 运行所有测试，包括完善和横切关注点的测试、性能测试（T088a）和协议格式测试（T091a, T091b），确保测试通过 (遵循章程: 版本控制与测试纪律)
 - [ ] T093 提交完善阶段代码，描述完善工作和最终的测试结果 (遵循章程: 版本控制与测试纪律)
 
 ---

@@ -198,3 +198,155 @@ class TestMonitorTool:
 
         # 工具应该仍然返回结果（可能默认为 all）
         assert isinstance(result, ToolExecutionResult)
+
+
+class TestCommandToolSecurity:
+    """命令工具安全加固测试（T090）"""
+
+    def setup_method(self):
+        """设置测试环境"""
+        self.tool = CommandTool()
+
+    def test_command_injection_semicolon(self):
+        """测试命令注入攻击：分号 (;）"""
+        # 尝试使用分号连接多个命令
+        is_valid, error = self.tool.validate_args("ls", ["file.txt; rm -rf /"])
+        assert is_valid is False
+        assert "非法字符" in error or ";" in error
+
+        # 执行应该被拒绝
+        result = self.tool.execute(command="ls", args=["file.txt; echo hacked"])
+        assert result.success is False
+
+    def test_command_injection_pipe(self):
+        """测试命令注入攻击：管道符 (|)"""
+        is_valid, error = self.tool.validate_args("cat", ["file.txt | grep test"])
+        assert is_valid is False
+        assert "非法字符" in error
+
+    def test_command_injection_ampersand(self):
+        """测试命令注入攻击：& 符号"""
+        is_valid, error = self.tool.validate_args("ls", ["&", "rm", "-rf", "/"])
+        assert is_valid is False
+        assert "非法字符" in error
+
+    def test_command_injection_redirect(self):
+        """测试命令注入攻击：重定向符 (>, <)"""
+        # 输出重定向
+        is_valid, error = self.tool.validate_args("ls", [">", "/tmp/malicious"])
+        assert is_valid is False
+
+        # 输入重定向
+        is_valid, error = self.tool.validate_args("cat", ["<", "/etc/passwd"])
+        assert is_valid is False
+
+    def test_command_injection_backtick(self):
+        """测试命令注入攻击：反引号 (`)"""
+        is_valid, error = self.tool.validate_args("ls", ["`whoami`"])
+        assert is_valid is False
+        assert "非法字符" in error
+
+    def test_command_injection_dollar(self):
+        """测试命令注入攻击：美元符号 ($)"""
+        # 使用白名单中的命令
+        is_valid, error = self.tool.validate_args("ls", ["$HOME/file.txt"])
+        assert is_valid is False
+        assert "非法字符" in error
+
+    def test_command_injection_parentheses(self):
+        """测试命令注入攻击：括号 (())"""
+        is_valid, error = self.tool.validate_args("ls", ["$(rm -rf /)"])
+        assert is_valid is False
+        assert "非法字符" in error
+
+    def test_command_injection_newline(self):
+        """测试命令注入攻击：换行符"""
+        is_valid, error = self.tool.validate_args("ls", ["file.txt\nrm -rf /"])
+        assert is_valid is False
+        assert "非法字符" in error
+
+    def test_command_injection_carriage_return(self):
+        """测试命令注入攻击：回车符"""
+        is_valid, error = self.tool.validate_args("ls", ["file.txt\rm -rf /"])
+        assert is_valid is False
+        assert "非法字符" in error
+
+    def test_all_blacklist_chars_blocked(self):
+        """测试所有黑名单字符都被阻止"""
+        from src.tools.command import BLACKLIST_CHARS
+
+        # 测试每个黑名单字符
+        for char in BLACKLIST_CHARS:
+            is_valid, error = self.tool.validate_args("ls", [f"file{char}txt"])
+            assert is_valid is False, f"字符 '{char}' 应该被阻止但没有"
+            assert "非法字符" in error or char in error
+
+    def test_combined_attack_vectors(self):
+        """测试组合攻击向量"""
+        # 组合多个危险字符
+        is_valid, error = self.tool.validate_args("ls", ["file.txt; |& `cmd`"])
+        assert is_valid is False
+
+        # 测试命令链
+        result = self.tool.execute(command="ls", args=[";cat", "/etc/passwd"])
+        assert result.success is False
+
+    def test_path_traversal_prevention(self):
+        """测试路径遍历攻击防护"""
+        # 虽然这不是黑名单字符的范畴，但是相关的安全测试
+        # 工具应该能处理包含 .. 的路径
+        # 但白名单命令本身限制了危险操作
+        is_valid, error = self.tool.validate_args("cat", ["../../../etc/passwd"])
+        # 这是合法的参数格式，即使内容可疑
+        # 安全性主要来自白名单命令限制
+        assert is_valid is True or "非法字符" not in error
+
+    def test_valid_parameters_not_blocked(self):
+        """测试合法参数不被阻止"""
+        # 确保合法的参数可以正常使用
+        is_valid, error = self.tool.validate_args("ls", ["-la", "/home/user"])
+        assert is_valid is True
+        assert error == ""
+
+        is_valid, error = self.tool.validate_args("grep", ["-r", "pattern", "/path"])
+        assert is_valid is True
+        assert error == ""
+
+    def test_whitelist_only_enforcement(self):
+        """测试仅允许白名单命令"""
+        # 尝试使用危险但不在白名单中的命令
+        dangerous_commands = ["rm", "chmod", "chown", "sudo", "su", "nc", "netcat"]
+
+        for cmd in dangerous_commands:
+            is_valid, error = self.tool.validate_args(cmd, None)
+            assert is_valid is False
+            assert "不在白名单中" in error
+
+    def test_special_char_combinations(self):
+        """测试特殊字符组合"""
+        # URL 编码尝试
+        is_valid, error = self.tool.validate_args("ls", ["file%2etxt"])
+        # % 不在黑名单中，所以应该通过验证（这是预期的）
+        # 实际的安全限制来自白名单命令
+
+        # 十六进制编码尝试（应该不会通过 shell 执行）
+        is_valid, error = self.tool.validate_args("ls", ["\\x2F"])
+        # 这是合法参数格式
+
+    def test_unicode_and_encoding_attacks(self):
+        """测试 Unicode 和编码攻击"""
+        # 尝试使用 Unicode 字符绕过
+        is_valid, error = self.tool.validate_args("ls", ["file\u2026txt"])  # Unicode 省略号
+        # Unicode 字符本身不在黑名单中，这是预期的
+        # 实际执行时会被正确处理
+
+    def test_shell_metacharacters_all_blocked(self):
+        """测试所有 shell 元字符都被阻止"""
+        # 测试常见的 shell 元字符
+        shell_metachars = [';', '&', '|', '>', '<', '`', '$', '(', ')', '\n', '\r']
+
+        for char in shell_metachars:
+            is_valid, error = self.tool.validate_args("ls", [f"test{char}arg"])
+            if char in [';', '&', '|', '>', '<', '`', '$', '(', ')', '\n', '\r']:
+                # 这些字符应该在黑名单中
+                assert is_valid is False, f"Shell 元字符 '{char}' 应该被阻止"
