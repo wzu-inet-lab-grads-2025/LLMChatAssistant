@@ -11,6 +11,7 @@ import sys
 from typing import Optional
 
 from .nplt_client import NPLTClient
+from .rdt_client import RDTClient
 from .ui import ClientUI
 from ..utils.logger import get_client_logger
 
@@ -29,6 +30,7 @@ class ClientMain:
         self.port = port
         self.ui = ClientUI()
         self.client: Optional[NPLTClient] = None
+        self.rdt_client: Optional[RDTClient] = None
         self.running = False
         self.logger = get_client_logger()
 
@@ -59,6 +61,17 @@ class ClientMain:
 
         self.logger.info("已连接到服务器")
         self.running = True
+
+        # 初始化 RDT 客户端
+        self.rdt_client = RDTClient(
+            server_host=self.host,
+            server_port=9998,
+            window_size=5
+        )
+        await self.rdt_client.start()
+
+        # 注册下载处理器
+        self.client.download_handler = self._handle_download_offer
 
         # 启动消息接收循环
         asyncio.create_task(self.client.start_message_loop())
@@ -103,6 +116,10 @@ class ClientMain:
         """停止客户端"""
         self.logger.info("客户端停止中...")
         self.running = False
+
+        # 停止 RDT 客户端
+        if self.rdt_client:
+            await self.rdt_client.stop()
 
         if self.client:
             await self.client.disconnect()
@@ -249,6 +266,175 @@ class ClientMain:
         self.ui.clear()
         self.ui.show_welcome()
         self.ui.print_info("对话历史已清空")
+
+    async def _handle_download_offer(self, offer_data: dict):
+        """处理下载提议
+
+        Args:
+            offer_data: 下载提议数据
+        """
+        try:
+            filename = offer_data.get("filename", "unknown")
+            filesize = offer_data.get("size", 0)
+            checksum = offer_data.get("checksum", "")
+            download_token = offer_data.get("download_token", "")
+            server_host = offer_data.get("server_host", self.host)
+            server_port = offer_data.get("server_port", 9998)
+
+            # 格式化文件大小
+            size_str = self._format_filesize(filesize)
+
+            # 显示下载确认
+            self.ui.print_separator()
+            self.ui.print_info(f"服务器提议发送文件: {filename}")
+            self.ui.print_info(f"文件大小: {size_str}")
+            self.ui.print_info(f"MD5 校验和: {checksum}")
+            self.ui.print_separator()
+
+            # 等待用户确认
+            confirm = await asyncio.to_thread(
+                self.ui.input,
+                "是否接收此文件? (y/n): "
+            )
+
+            if confirm.lower() != 'y':
+                self.logger.info(f"用户拒绝下载: {filename}")
+                self.ui.print_warning("下载已取消")
+                return
+
+            # 开始下载
+            await self._download_file(
+                filename=filename,
+                filesize=filesize,
+                checksum=checksum,
+                download_token=download_token,
+                server_host=server_host,
+                server_port=server_port
+            )
+
+        except Exception as e:
+            self.logger.error(f"处理下载提议失败: {e}")
+            self.ui.print_error(f"下载失败: {e}")
+
+    async def _download_file(
+        self,
+        filename: str,
+        filesize: int,
+        checksum: str,
+        download_token: str,
+        server_host: str,
+        server_port: int
+    ):
+        """下载文件
+
+        Args:
+            filename: 文件名
+            filesize: 文件大小
+            checksum: 校验和
+            download_token: 下载令牌
+            server_host: 服务器地址
+            server_port: 服务器端口
+        """
+        try:
+            import time
+            from datetime import datetime
+
+            self.logger.info(f"开始下载: {filename}")
+            self.ui.print_info(f"正在下载: {filename}...")
+
+            # 创建接收会话
+            session = self.rdt_client.create_session(
+                download_token=download_token,
+                filename=filename,
+                file_size=filesize,
+                expected_checksum=checksum
+            )
+
+            # 创建进度条
+            from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
+
+            progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeRemainingColumn(),
+                console=self.ui.console
+            )
+
+            with progress:
+                task_id = progress.add_task(
+                    f"下载 {filename}",
+                    total=filesize
+                )
+
+                # 启动进度更新任务
+                start_time = time.time()
+
+                async def update_progress():
+                    while session.state.value == "receiving":
+                        received = sum(len(data) for data in session.received_packets.values())
+                        progress.update(task_id, completed=received)
+                        await asyncio.sleep(0.1)
+
+                progress_task = asyncio.create_task(update_progress())
+
+                # 接收文件
+                file_data = await self.rdt_client.receive_file(download_token)
+
+                # 取消进度更新任务
+                progress_task.cancel()
+                progress.update(task_id, completed=filesize)
+
+            if file_data is None:
+                self.ui.print_error("文件下载失败")
+                return
+
+            # 验证文件完整性
+            import hashlib
+            computed_checksum = hashlib.md5(file_data).hexdigest()
+            if computed_checksum != checksum:
+                self.ui.print_error("文件校验和不匹配，文件可能损坏")
+                return
+
+            # 保存文件
+            save_path = os.path.join("downloads", filename)
+            os.makedirs("downloads", exist_ok=True)
+
+            with open(save_path, 'wb') as f:
+                f.write(file_data)
+
+            # 计算统计信息
+            elapsed = time.time() - start_time
+            speed = filesize / elapsed if elapsed > 0 else 0
+
+            self.ui.print_success(f"文件下载完成: {filename}")
+            self.ui.print_info(f"保存位置: {save_path}")
+            self.ui.print_info(f"耗时: {elapsed:.2f} 秒")
+            self.ui.print_info(f"平均速度: {self._format_filesize(speed)}/s")
+            self.ui.print_info(f"接收统计: {session.received_count}/{session.total_packets} 包, "
+                             f"重复: {session.duplicate_count}")
+
+            self.logger.info(f"文件下载完成: {filename} -> {save_path}")
+
+        except Exception as e:
+            self.logger.error(f"下载文件失败: {e}")
+            self.ui.print_error(f"下载失败: {e}")
+
+    def _format_filesize(self, size: int) -> str:
+        """格式化文件大小
+
+        Args:
+            size: 文件大小（字节）
+
+        Returns:
+            格式化后的字符串
+        """
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024.0:
+                return f"{size:.2f} {unit}"
+            size /= 1024.0
+        return f"{size:.2f} TB"
 
 
 async def main():

@@ -20,6 +20,7 @@ from ..utils.logger import get_server_logger
 from ..protocols.nplt import MessageType
 from .agent import ReActAgent
 from .nplt_server import NPLTServer, Session
+from .rdt_server import RDTServer
 
 
 class Server:
@@ -45,6 +46,9 @@ class Server:
 
         # NPLT 服务器
         self.nplt_server: NPLTServer = None
+
+        # RDT 服务器
+        self.rdt_server: RDTServer = None
 
         # 运行状态
         self.running = False
@@ -100,11 +104,22 @@ class Server:
                 heartbeat_interval=self.config.server.heartbeat_interval
             )
 
+            # 创建 RDT 服务器
+            self.rdt_server = RDTServer(
+                host="0.0.0.0",
+                port=9998,
+                window_size=5,
+                timeout=0.1
+            )
+
             # 注册聊天处理器
             self.nplt_server.register_chat_handler(self._handle_chat)
 
             # 启动 NPLT 服务器
             await self.nplt_server.start()
+
+            # 启动 RDT 服务器
+            await self.rdt_server.start()
 
             self.running = True
             self.logger.success("服务器启动成功")
@@ -171,6 +186,66 @@ class Server:
             session.conversation_history.add_message("assistant", error_msg)
             return error_msg
 
+    async def offer_file_download(
+        self,
+        session: Session,
+        filename: str,
+        file_data: bytes
+    ) -> bool:
+        """向客户端提议下载文件
+
+        Args:
+            session: 客户端会话
+            filename: 文件名
+            file_data: 文件数据
+
+        Returns:
+            是否成功
+        """
+        try:
+            import json
+
+            self.logger.info(f"[{session.session_id[:8]}] 准备发送文件: {filename} ({len(file_data)} 字节)")
+
+            # 创建 RDT 会话
+            client_addr = session.client_addr  # TCP 地址
+            download_token = self.rdt_server.create_session(
+                filename=filename,
+                file_data=file_data,
+                client_addr=client_addr
+            )
+
+            # 获取 RDT 会话信息
+            rdt_session = self.rdt_server.sessions.get(download_token)
+            if not rdt_session:
+                self.logger.error(f"创建 RDT 会话失败")
+                return False
+
+            # 构造下载提议消息
+            offer_data = {
+                "filename": filename,
+                "size": rdt_session.file_size,
+                "checksum": rdt_session.checksum,
+                "download_token": download_token,
+                "server_host": "0.0.0.0",  # RDT 服务器地址
+                "server_port": 9998
+            }
+
+            offer_json = json.dumps(offer_data, ensure_ascii=False)
+
+            # 发送 DOWNLOAD_OFFER 消息
+            await session.send_message(
+                MessageType.DOWNLOAD_OFFER,
+                offer_json.encode('utf-8')
+            )
+
+            self.logger.info(f"[{session.session_id[:8]}] 已发送下载提议: {filename}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"[{session.session_id[:8]}] 发送下载提议失败: {e}")
+            return False
+
     async def _run_forever(self):
         """保持服务器运行"""
         try:
@@ -190,6 +265,10 @@ class Server:
         # 停止 NPLT 服务器
         if self.nplt_server:
             await self.nplt_server.stop()
+
+        # 停止 RDT 服务器
+        if self.rdt_server:
+            await self.rdt_server.stop()
 
         self.logger.success("服务器已停止")
 

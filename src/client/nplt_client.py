@@ -38,6 +38,9 @@ class NPLTClient:
     # 消息处理器
     message_handler: Optional[Callable] = None
 
+    # 下载处理器
+    download_handler: Optional[Callable] = None
+
     # 日志记录器（在 __post_init__ 中初始化）
     logger = None
 
@@ -243,8 +246,20 @@ class NPLTClient:
 
             elif message.type == MessageType.DOWNLOAD_OFFER:
                 # 下载提议
-                self.ui.print_info("服务器提议下载文件")
-                # TODO: 实现下载逻辑
+                import json
+                try:
+                    offer_data = json.loads(message.data.decode('utf-8', errors='ignore'))
+                    self.logger.info(f"收到下载提议: {offer_data.get('filename')}")
+
+                    # 调用下载处理器（如果已注册）
+                    if self.download_handler:
+                        await self.download_handler(offer_data)
+                    else:
+                        self.ui.print_warning("收到下载提议，但未注册下载处理器")
+
+                except Exception as e:
+                    self.logger.error(f"处理下载提议失败: {e}")
+                    self.ui.print_error(f"处理下载提议失败: {e}")
 
             else:
                 self.ui.print_warning(f"未知消息类型: {message.type}")
