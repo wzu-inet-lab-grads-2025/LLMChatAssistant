@@ -122,9 +122,9 @@
 
 **注意: 先编写这些测试，确保在实施前它们失败**
 
-- [ ] T041 [P] [US1] 在 tests/contract/test_nplt.py 中编写 NPLT 协议编解码测试
-- [ ] T042 [P] [US1] 在 tests/integration/test_client_server.py 中编写客户端-服务器连接测试
-- [ ] T043 [US1] 在 tests/integration/test_agent.py 中编写 Agent 工具调用测试 (使用真实智谱 API)
+- [X] T041 [P] [US1] 在 tests/contract/test_nplt.py 中编写 NPLT 协议编解码测试
+- [X] T042 [P] [US1] 在 tests/integration/test_client_server.py 中编写客户端-服务器连接测试
+- [X] T043 [US1] 在 tests/integration/test_agent.py 中编写 Agent 工具调用测试 (使用真实智谱 API)
 - [X] T043a [P] [US1] 在 tests/contract/test_nplt_wire_format.py 中编写 NPLT 协议字节格式测试（验证字段长度、字节序等）
 - [X] T043b [P] [US1] 在 tests/contract/test_rdt_wire_format.py 中编写 RDT 协议字节格式测试（验证字段长度、校验和计算等）
 
@@ -143,7 +143,7 @@
 
 **目的**: 确保用户故事 1 完成并通过测试后进行版本提交
 
-- [ ] T050 [US1] 运行用户故事 1 的所有测试，确保测试通过 (遵循章程: 版本控制与测试纪律)
+- [X] T050 [US1] 运行用户故事 1 的所有测试，确保测试通过 (遵循章程: 版本控制与测试纪律)
 - [ ] T051 [US1] 提交用户故事 1 代码，描述基础对话功能和测试结果 (遵循章程: 版本控制与测试纪律)
 
 **检查点**: 此时，用户故事 1 应该完全功能化且可独立测试
