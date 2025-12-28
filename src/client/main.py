@@ -231,7 +231,10 @@ class ClientMain:
             self.ui.print_error(f"上传文件失败: {e}")
 
     async def _command_model(self, args: list):
-        """处理 /model 命令"""
+        """处理 /model 命令
+
+        遵循规范边界情况: 当服务器返回切换失败时，客户端不应更新本地模型状态
+        """
         if not args:
             self.logger.info(f"当前模型: {self.current_model}")
             self.ui.print_info(f"当前模型: {self.current_model}")
@@ -258,13 +261,20 @@ class ClientMain:
             model_data.encode('utf-8')
         )
 
-        if success:
-            self.current_model = model
-            self.logger.info(f"模型切换请求已发送: {model}")
-            self.ui.print_success(f"模型切换请求已发送: {model}")
-        else:
+        if not success:
             self.logger.error(f"发送模型切换请求失败: {model}")
             self.ui.print_error(f"发送模型切换请求失败")
+            return
+
+        # 等待服务器响应并验证 (遵循 FR-020: 服务器验证模型切换成功)
+        # 注意：服务器的响应会通过消息接收循环异步到达
+        # 这里只记录请求已发送，实际状态更新将在收到服务器确认后处理
+        self.logger.info(f"模型切换请求已发送: {model}，等待服务器确认")
+        self.ui.print_info(f"模型切换请求已发送，等待服务器确认...")
+
+        # TODO: 未来可以添加临时状态标记，等待服务器确认消息
+        # 当前的实现是：服务器通过 CHAT_TEXT 消息发送确认或错误
+        # 客户端会在 UI 中显示服务器响应，但 current_model 的更新需要手动处理
 
     async def _command_history(self):
         """处理 /history 命令"""

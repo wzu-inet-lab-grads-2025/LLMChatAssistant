@@ -457,7 +457,10 @@ class NPLTServer:
         return len(self.sessions)
 
     async def _handle_model_switch(self, session: Session, message: NPLTMessage):
-        """处理模型切换请求"""
+        """处理模型切换请求
+
+        遵循 FR-020: 服务器必须验证模型确实切换成功后才发送确认消息
+        """
         try:
             import json
 
@@ -470,24 +473,39 @@ class NPLTServer:
             # 验证模型名称
             available_models = ["glm-4-flash", "glm-4.5-flash"]
             if model not in available_models:
+                print(f"[WARN] [SERVER] 无效的模型: {model}")
                 await session.send_message(
                     MessageType.CHAT_TEXT,
-                    f"无效的模型: {model}".encode('utf-8')
+                    f"无效的模型: {model}，可用模型: {', '.join(available_models)}".encode('utf-8')
                 )
                 return
 
-            # 切换模型（注意：这里需要访问 LLM Provider）
-            # 由于 NPLTServer 没有直接访问 LLM Provider，我们通过外部设置回调来处理
-            if hasattr(self, 'model_switch_callback') and self.model_switch_callback:
-                self.model_switch_callback(model)
+            # 验证回调是否已设置 (遵循规范边界情况: LLM Provider回调未设置)
+            if not hasattr(self, 'model_switch_callback') or not self.model_switch_callback:
+                print(f"[ERROR] [SERVER] 模型切换回调未设置")
+                await session.send_message(
+                    MessageType.CHAT_TEXT,
+                    f"模型切换失败: 服务器回调未设置".encode('utf-8')
+                )
+                return
 
-            # 发送确认
+            # 尝试切换模型并验证成功 (遵循 FR-020: 验证切换成功)
+            try:
+                self.model_switch_callback(model)
+                print(f"[INFO] [SERVER] 模型切换成功: {model}")
+            except Exception as switch_error:
+                print(f"[ERROR] [SERVER] 模型切换失败: {switch_error}")
+                await session.send_message(
+                    MessageType.CHAT_TEXT,
+                    f"模型切换失败: {str(switch_error)}".encode('utf-8')
+                )
+                return
+
+            # 切换成功，发送确认 (遵循 FR-020: 验证成功后才发送确认)
             await session.send_message(
                 MessageType.CHAT_TEXT,
                 f"模型已切换: {model}".encode('utf-8')
             )
-
-            print(f"[INFO] [SERVER] 模型已切换: {model}")
 
         except Exception as e:
             print(f"[ERROR] [SERVER] 处理模型切换失败: {e}")

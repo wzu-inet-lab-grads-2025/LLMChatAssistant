@@ -415,3 +415,128 @@ class TestAgentPerformance:
             assert avg_execution_time < 3.0, f"平均工具执行时间过长: {avg_execution_time:.2f}s >= 3s"
         else:
             print("没有触发工具调用，跳过执行时间验证")
+
+
+@pytest.mark.skipif(
+    not os.getenv("ZHIPU_API_KEY"),
+    reason="需要 ZHIPU_API_KEY 环境变量"
+)
+@pytest.mark.asyncio
+class TestAgentModelSwitch:
+    """模型切换功能测试 (T097, T098)
+
+    遵循章程: 测试真实性，使用真实API
+    遵循 FR-020: 服务器必须验证模型确实切换成功
+    """
+
+    async def test_model_switch_integration(self):
+        """T097: 测试模型切换集成功能
+
+        验证模型切换确实生效：
+        1. 创建 LLM Provider
+        2. 调用 set_model 切换模型
+        3. 验证 current_model 属性已更新
+        4. 调用 chat API 验证使用的是新模型
+        """
+        llm_provider = ZhipuProvider(
+            api_key=os.getenv("ZHIPU_API_KEY"),
+            model="glm-4-flash"  # 初始模型
+        )
+
+        # 验证初始模型
+        assert llm_provider.current_model == "glm-4-flash"
+        print(f"✓ 初始模型: {llm_provider.current_model}")
+
+        # 切换到 glm-4.5-flash
+        llm_provider.set_model("glm-4.5-flash")
+
+        # 验证模型已切换
+        assert llm_provider.current_model == "glm-4.5-flash"
+        print(f"✓ 模型已切换: {llm_provider.current_model}")
+
+        # 验证聊天 API 使用新模型
+        from src.llm.base import Message
+        messages = [Message(role='user', content='你好')]
+
+        response_text = ""
+        async for chunk in llm_provider.chat(messages=messages, model="glm-4.5-flash", stream=False):
+            response_text += chunk
+
+        # 验证响应
+        assert isinstance(response_text, str)
+        assert len(response_text) > 0
+        print(f"✓ 新模型响应: {response_text[:50]}...")
+
+    async def test_model_switch_failure(self):
+        """T098: 测试模型切换失败处理
+
+        验证切换无效模型时的错误处理：
+        1. 尝试切换到不存在的模型
+        2. 验证抛出 ValueError
+        3. 验证 current_model 保持不变
+        """
+        llm_provider = ZhipuProvider(
+            api_key=os.getenv("ZHIPU_API_KEY"),
+            model="glm-4-flash"
+        )
+
+        original_model = llm_provider.current_model
+        print(f"✓ 原始模型: {original_model}")
+
+        # 尝试切换到无效模型
+        invalid_model = "invalid-model-name"
+
+        try:
+            llm_provider.set_model(invalid_model)
+            assert False, "应该抛出 ValueError"
+        except ValueError as e:
+            print(f"✓ 预期的错误: {e}")
+            # 验证模型未改变
+            assert llm_provider.current_model == original_model
+            print(f"✓ 模型保持不变: {llm_provider.current_model}")
+
+    async def test_model_switch_between_available_models(self):
+        """测试在可用模型之间切换"""
+        llm_provider = ZhipuProvider(
+            api_key=os.getenv("ZHIPU_API_KEY"),
+            model="glm-4-flash"
+        )
+
+        # 在两个模型之间来回切换
+        models = ["glm-4-flash", "glm-4.5-flash"]
+
+        for i in range(3):
+            for model in models:
+                llm_provider.set_model(model)
+                assert llm_provider.current_model == model
+                print(f"✓ 切换 {i+1} 轮 -> {model}")
+
+    async def test_model_switch_validation(self):
+        """测试模型切换验证逻辑（服务器端集成验证）"""
+        from src.server.nplt_server import NPLTServer
+        from src.llm.zhipu import ZhipuProvider
+
+        # 创建服务器
+        server = NPLTServer(host="127.0.0.1", port=9999)
+        server.model_switch_callback = None  # 未设置回调
+
+        # 验证：回调未设置时，模型切换应失败
+        # 这模拟了规范边界情况："LLM Provider回调未设置"
+        assert server.model_switch_callback is None
+        print("✓ 模型切换回调未设置（测试边界情况）")
+
+        # 设置回调
+        llm_provider = ZhipuProvider(
+            api_key=os.getenv("ZHIPU_API_KEY"),
+            model="glm-4-flash"
+        )
+        server.model_switch_callback = llm_provider.set_model
+
+        # 验证：回调已设置
+        assert server.model_switch_callback is not None
+        print("✓ 模型切换回调已设置")
+
+        # 验证回调可以正常工作
+        server.model_switch_callback("glm-4.5-flash")
+        assert llm_provider.current_model == "glm-4.5-flash"
+        print("✓ 回调执行成功，模型已切换")

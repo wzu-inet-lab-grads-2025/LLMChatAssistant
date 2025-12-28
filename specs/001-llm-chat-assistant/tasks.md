@@ -256,6 +256,22 @@
 
 ---
 
+## 阶段 N+1: 模型切换功能修复
+
+**目的**: 修复模型切换功能缺陷，满足规范 FR-020 要求（服务器必须验证模型切换成功）
+
+**背景**: 在代码审查中发现服务器端的 `model_switch_callback` 未设置，导致模型切换请求发送后 LLM Provider 实际上不会切换模型。
+
+- [ ] T094 在 src/server/main.py:122 后添加模型切换回调设置：`self.nplt_server.model_switch_callback = self.llm_provider.set_model` (遵循 FR-020: 服务器验证模型切换成功)
+- [ ] T095 在 src/server/nplt_server.py:_handle_model_switch 中添加模型切换验证逻辑，确认 set_model 成功后才发送确认消息 (遵循 FR-020: 验证切换成功)
+- [ ] T096 在 src/client/main.py:_command_model 中添加错误处理，当服务器返回切换失败时不更新 current_model (遵循规范边界情况: 客户端不应更新本地模型状态)
+- [ ] T097 [P] 在 tests/integration/test_agent.py 中添加 test_model_switch_integration 测试，验证模型切换确实生效（切换后调用API确认使用了新模型）
+- [ ] T098 [P] 在 tests/integration/test_agent.py 中添加 test_model_switch_failure 测试，验证切换无效模型时的错误处理
+- [ ] T099 运行完整测试套件，确保模型切换修复不破坏现有功能 (遵循章程: 测试真实性)
+- [ ] T100 提交模型切换修复代码，描述修复的问题和验证结果 (遵循章程: 版本控制与测试纪律)
+
+---
+
 ## 依赖关系与执行顺序
 
 ### 阶段依赖关系
@@ -265,7 +281,8 @@
 - **用户故事(阶段 3-5)**: 都依赖于基础阶段完成
   - 然后用户故事可以并行进行(如果有人员)
   - 或按优先级顺序进行(P1 → P2 → P3)
-- **完善(最终阶段)**: 依赖于所有期望的用户故事完成
+- **完善(阶段 N)**: 依赖于所有期望的用户故事完成
+- **模型切换修复(阶段 N+1)**: 依赖于完善阶段完成 - 修复代码审查中发现的缺陷
 
 ### 用户故事依赖关系
 
@@ -290,16 +307,27 @@
 - 阶段 2.4 (工具层) 中的所有 [P] 任务可以并行运行
 - 所有测试用例中的 [P] 任务可以并行编写
 - 不同用户故事可以由不同团队成员并行处理
+- **阶段 N+1 (模型切换修复)**: T097 和 T098 测试用例可以并行编写
 
 ---
 
-## 并行示例: 用户故事 1 测试编写
+## 并行执行示例
+
+### 用户故事 1 测试编写
 
 ```bash
 # 一起启动用户故事 1 的所有测试编写:
 pytest tests/contract/test_nplt.py --fixtures-only  # 生成测试框架
 pytest tests/integration/test_client_server.py --fixtures-only
 pytest tests/integration/test_agent.py --fixtures-only
+```
+
+### 模型切换修复测试编写
+
+```bash
+# 一起启动模型切换修复的测试编写:
+pytest tests/integration/test_agent.py::TestAgentModelSwitch --fixtures-only  # 生成测试框架
+# 同时可以并行编写 T097 和 T098 测试用例
 ```
 
 ---

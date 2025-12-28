@@ -115,6 +115,9 @@ class Server:
             # 注册聊天处理器
             self.nplt_server.register_chat_handler(self._handle_chat)
 
+            # 注册模型切换回调 (遵循 FR-020: 服务器验证模型切换成功)
+            self.nplt_server.model_switch_callback = self.llm_provider.set_model
+
             # 启动 NPLT 服务器
             await self.nplt_server.start()
 
