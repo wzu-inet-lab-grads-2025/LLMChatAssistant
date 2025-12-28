@@ -12,6 +12,7 @@ from typing import Optional
 
 from .nplt_client import NPLTClient
 from .ui import ClientUI
+from ..utils.logger import get_client_logger
 
 
 class ClientMain:
@@ -29,12 +30,16 @@ class ClientMain:
         self.ui = ClientUI()
         self.client: Optional[NPLTClient] = None
         self.running = False
+        self.logger = get_client_logger()
 
         # 当前模型
         self.current_model = "glm-4-flash"
 
     async def start(self):
         """启动客户端"""
+        self.logger.info("客户端启动中...")
+        self.logger.info(f"服务器地址: {self.host}:{self.port}")
+
         # 显示欢迎画面
         self.ui.show_welcome()
         self.ui.print_separator()
@@ -48,9 +53,11 @@ class ClientMain:
 
         # 连接到服务器
         if not await self.client.connect():
+            self.logger.error("无法连接到服务器")
             self.ui.print_error("无法连接到服务器，退出")
             return
 
+        self.logger.info("已连接到服务器")
         self.running = True
 
         # 启动消息接收循环
@@ -69,17 +76,23 @@ class ClientMain:
                 if not user_input:
                     continue
 
+                # 记录用户输入
+                self.logger.debug(f"用户输入: {user_input[:50]}...")
+
                 # 解析命令
                 if await self._parse_command(user_input):
                     continue
 
                 # 发送聊天消息
                 await self.client.send_chat(user_input)
+                self.logger.debug("消息已发送")
 
             except KeyboardInterrupt:
+                self.logger.info("收到中断信号")
                 self.ui.print_info("\n收到中断信号，正在退出...")
                 break
             except Exception as e:
+                self.logger.error(f"主循环错误: {e}")
                 self.ui.print_error(f"错误: {e}")
                 break
 
@@ -88,12 +101,14 @@ class ClientMain:
 
     async def stop(self):
         """停止客户端"""
+        self.logger.info("客户端停止中...")
         self.running = False
 
         if self.client:
             await self.client.disconnect()
 
         self.ui.print_info("再见！")
+        self.logger.info("客户端已停止")
 
     async def _parse_command(self, user_input: str) -> bool:
         """解析命令
@@ -118,6 +133,7 @@ class ClientMain:
 
         # /quit - 退出
         elif command == "/quit":
+            self.logger.info("用户请求退出")
             self.running = False
             return True
 
@@ -153,9 +169,11 @@ class ClientMain:
             return
 
         filepath = args[0]
+        self.logger.info(f"上传文件请求: {filepath}")
 
         # 检查文件是否存在
         if not os.path.exists(filepath):
+            self.logger.error(f"文件不存在: {filepath}")
             self.ui.print_error(f"文件不存在: {filepath}")
             return
 
@@ -166,9 +184,11 @@ class ClientMain:
         # 检查文件大小（10MB 限制）
         max_size = 10 * 1024 * 1024
         if filesize > max_size:
+            self.logger.error(f"文件大小超过限制: {filesize} > {max_size}")
             self.ui.print_error(f"文件大小超过限制 ({filesize} > {max_size} 字节)")
             return
 
+        self.logger.info(f"上传文件: {filename} ({filesize} 字节)")
         self.ui.print_info(f"上传文件: {filename} ({filesize} 字节)")
 
         # 读取文件内容
@@ -184,14 +204,17 @@ class ClientMain:
                 # 这里应该通过 NPLT 协议发送文件数据
                 progress.update(task_id, advance=filesize)
 
+            self.logger.info(f"文件上传完成: {filename}")
             self.ui.print_success(f"文件上传完成: {filename}")
 
         except Exception as e:
+            self.logger.error(f"读取文件失败: {e}")
             self.ui.print_error(f"读取文件失败: {e}")
 
     async def _command_model(self, args: list):
         """处理 /model 命令"""
         if not args:
+            self.logger.info(f"当前模型: {self.current_model}")
             self.ui.print_info(f"当前模型: {self.current_model}")
             self.ui.print_info("可用模型: glm-4-flash, glm-4.5-flash")
             return
@@ -201,6 +224,7 @@ class ClientMain:
         # 验证模型名称
         available_models = ["glm-4-flash", "glm-4.5-flash"]
         if model not in available_models:
+            self.logger.warning(f"无效的模型: {model}")
             self.ui.print_error(f"无效的模型: {model}")
             self.ui.print_info(f"可用模型: {', '.join(available_models)}")
             return
@@ -208,6 +232,7 @@ class ClientMain:
         # 切换模型
         # TODO: 发送模型切换请求到服务器
         self.current_model = model
+        self.logger.info(f"模型已切换: {model}")
         self.ui.print_success(f"已切换模型: {model}")
 
     async def _command_history(self):
@@ -218,6 +243,7 @@ class ClientMain:
     async def _command_clear(self):
         """处理 /clear 命令"""
         # TODO: 清空本地对话历史
+        self.logger.info("清空对话历史")
         self.ui.clear()
         self.ui.show_welcome()
         self.ui.print_info("对话历史已清空")

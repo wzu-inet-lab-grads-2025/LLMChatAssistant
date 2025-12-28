@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Callable, Optional
 
 from ..protocols.nplt import MessageType, NPLTMessage
+from ..utils.logger import get_client_logger
 from .ui import ClientUI
 
 
@@ -37,10 +38,14 @@ class NPLTClient:
     # 消息处理器
     message_handler: Optional[Callable] = None
 
+    # 日志记录器（在 __post_init__ 中初始化）
+    logger = None
+
     def __post_init__(self):
         """初始化"""
         if self.ui is None:
             self.ui = ClientUI()
+        self.logger = get_client_logger()
 
     async def connect(self) -> bool:
         """连接到服务器
@@ -49,6 +54,7 @@ class NPLTClient:
             是否连接成功
         """
         self.retry_count = 0
+        self.logger.info(f"开始连接到服务器 {self.host}:{self.port}")
 
         while self.retry_count < self.max_retries:
             try:
@@ -61,17 +67,20 @@ class NPLTClient:
                 )
 
                 self.connected = True
+                self.logger.info("连接成功")
                 self.ui.print_success(f"连接成功")
                 return True
 
             except Exception as e:
                 self.retry_count += 1
+                self.logger.warning(f"连接失败 (尝试 {self.retry_count}/{self.max_retries}): {e}")
                 self.ui.print_error(f"连接失败: {e}")
 
                 if self.retry_count < self.max_retries:
                     self.ui.print_info(f"等待 2 秒后重试...")
                     await asyncio.sleep(2)
                 else:
+                    self.logger.error(f"达到最大重试次数 ({self.max_retries})，放弃连接")
                     self.ui.print_error(f"达到最大重试次数 ({self.max_retries})，放弃连接")
                     return False
 
@@ -79,12 +88,13 @@ class NPLTClient:
 
     async def disconnect(self):
         """断开连接"""
+        self.logger.info("断开连接")
         if self.writer:
             try:
                 self.writer.close()
                 await self.writer.wait_closed()
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.warning(f"关闭连接时出错: {e}")
 
         self.connected = False
         self.ui.print_info("已断开连接")
@@ -228,6 +238,7 @@ class NPLTClient:
             elif message.type == MessageType.AGENT_THOUGHT:
                 # Agent 思考过程
                 text = message.data.decode('utf-8', errors='ignore')
+                self.logger.debug(f"收到 Agent 思考: {text[:50]}...")
                 self.ui.print_agent_thought(text)
 
             elif message.type == MessageType.DOWNLOAD_OFFER:
