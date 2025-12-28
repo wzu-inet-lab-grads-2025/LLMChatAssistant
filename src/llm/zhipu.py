@@ -77,8 +77,8 @@ class ZhipuProvider(LLMProvider):
 
         try:
             if stream:
-                # 流式输出
-                response = await self.client.chat.completions.create(
+                # 流式输出 - 不需要 await
+                response = self.client.chat.completions.create(
                     model=model,
                     messages=api_messages,
                     temperature=temperature,
@@ -86,12 +86,50 @@ class ZhipuProvider(LLMProvider):
                     stream=True
                 )
 
-                async for chunk in response:
+                # 流式响应是同步迭代器
+                for chunk in response:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        # 在异步生成器中 yield
+                        yield chunk.choices[0].delta.content
+            else:
+                # 非流式输出 - 不需要 await
+                response = self.client.chat.completions.create(
+                    model=model,
+                    messages=api_messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=False
+                )
+                yield response.choices[0].message.content
+
+        except Exception as e:
+            raise Exception(f"智谱 API 调用失败：{str(e)}")
+        model = model or self.current_model
+        model_config = MODEL_CONFIGS.get(model, {})
+        temperature = kwargs.get('temperature', model_config.get('temperature', 0.7))
+        max_tokens = kwargs.get('max_tokens', model_config.get('max_tokens', 2000))
+
+        # 转换消息格式
+        api_messages = [msg.to_dict() for msg in messages]
+
+        try:
+            if stream:
+                # 流式输出 - 不需要 await
+                response = self.client.chat.completions.create(
+                    model=model,
+                    messages=api_messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=True
+                )
+
+                # 流式响应是同步迭代器
+                for chunk in response:
                     if chunk.choices and chunk.choices[0].delta.content:
                         yield chunk.choices[0].delta.content
             else:
-                # 非流式输出
-                response = await self.client.chat.completions.create(
+                # 非流式输出 - 不需要 await
+                response = self.client.chat.completions.create(
                     model=model,
                     messages=api_messages,
                     temperature=temperature,
@@ -120,7 +158,8 @@ class ZhipuProvider(LLMProvider):
         model = model or EMBED_MODEL
 
         try:
-            response = await self.client.embeddings.create(
+            # embeddings.create 不需要 await（同步调用）
+            response = self.client.embeddings.create(
                 model=model,
                 input=texts
             )
