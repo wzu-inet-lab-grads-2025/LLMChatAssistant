@@ -144,7 +144,7 @@
 **目的**: 确保用户故事 1 完成并通过测试后进行版本提交
 
 - [X] T050 [US1] 运行用户故事 1 的所有测试，确保测试通过 (遵循章程: 版本控制与测试纪律)
-- [ ] T051 [US1] 提交用户故事 1 代码，描述基础对话功能和测试结果 (遵循章程: 版本控制与测试纪律)
+- [X] T051 [US1] 提交用户故事 1 代码，描述基础对话功能和测试结果 (遵循章程: 版本控制与测试纪律)
 
 **检查点**: 此时，用户故事 1 应该完全功能化且可独立测试
 
@@ -158,21 +158,21 @@
 
 ### 用户故事 2 的测试(必需)⚠️
 
-- [ ] T052 [P] [US2] 在 tests/unit/test_storage.py 中编写向量索引测试
-- [ ] T053 [P] [US2] 在 tests/integration/test_rag.py 中编写 RAG 检索集成测试 (使用真实智谱 API)
+- [X] T052 [P] [US2] 在 tests/unit/test_storage.py 中编写向量索引测试
+- [X] T053 [P] [US2] 在 tests/integration/test_rag.py 中编写 RAG 检索集成测试 (使用真实智谱 API)
 
 ### 用户故事 2 的实施
 
-- [ ] T054 [US2] 在 src/client/main.py 中实现 /upload 命令解析和文件读取
-- [ ] T055 [US2] 在 src/client/main.py 中实现上传进度条显示 (Rich Progress)
-- [ ] T056 [US2] 在 src/client/nplt_client.py 中实现文件数据分块发送 (NPLT 协议)
-- [ ] T057 [US2] 在 src/server/nplt_server.py 中实现文件数据接收和组装
-- [ ] T058 [US2] 在 src/server/nplt_server.py 中调用 storage.files 保存文件到 storage/uploads/
-- [ ] T059 [US2] 在 src/server/agent.py 中集成 RAGTool，自动调用检索上传文件
-- [ ] T060 [US2] 在 src/storage/files.py 中实现文件大小验证 (10MB 限制，拒绝超限文件)
-- [ ] T061 [US2] 在 src/storage/vector_store.py 中实现文件文本分块 (500 字分块，50 字重叠)
-- [ ] T062 [US2] 在 src/storage/vector_store.py 中实现 Embedding 向量计算 (使用智谱 embedding-3-pro)
-- [ ] T063 [US2] 在 src/storage/vector_store.py 中实现向量索引持久化到 storage/vectors/
+- [X] T054 [US2] 在 src/client/main.py 中实现 /upload 命令解析和文件读取
+- [X] T055 [US2] 在 src/client/main.py 中实现上传进度条显示 (Rich Progress)
+- [X] T056 [US2] 在 src/client/nplt_client.py 中实现文件数据分块发送 (NPLT 协议)
+- [X] T057 [US2] 在 src/server/nplt_server.py 中实现文件数据接收和组装
+- [X] T058 [US2] 在 src/server/nplt_server.py 中调用 storage.files 保存文件到 storage/uploads/
+- [X] T059 [US2] 在 src/server/agent.py 中集成 RAGTool，自动调用检索上传文件
+- [X] T060 [US2] 在 src/storage/files.py 中实现文件大小验证 (10MB 限制，拒绝超限文件)
+- [X] T061 [US2] 在 src/storage/vector_store.py 中实现文件文本分块 (500 字分块，50 字重叠)
+- [X] T062 [US2] 在 src/storage/vector_store.py 中实现 Embedding 向量计算 (使用智谱 embedding-3-pro)
+- [X] T063 [US2] 在 src/storage/vector_store.py 中实现向量索引持久化到 storage/vectors/
 
 ---
 

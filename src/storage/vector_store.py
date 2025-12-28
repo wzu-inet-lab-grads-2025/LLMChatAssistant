@@ -147,6 +147,48 @@ class VectorStore:
         self.indices: dict[str, VectorIndex] = {}
         self._load_all_indices()
 
+
+    @staticmethod
+    def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+        """将文本分成重叠的块
+
+        Args:
+            text: 待分块的文本
+            chunk_size: 每块大小（字符数）
+            overlap: 重叠大小（字符数）
+
+        Returns:
+            文本块列表
+        """
+        if not text:
+            return []
+
+        chunks = []
+        start = 0
+        text_length = len(text)
+
+        while start < text_length:
+            # 计算结束位置
+            end = start + chunk_size
+
+            # 如果不是最后一块，尝试在单词边界分割
+            if end < text_length:
+                # 查找最近的空白字符
+                while end > start and text[end] not in [' ', '\n', '\t']:
+                    end -= 1
+                # 如果没找到空白字符，就在 chunk_size 处分割
+                if end == start:
+                    end = start + chunk_size
+
+            chunk = text[start:end].strip()
+            if chunk:
+                chunks.append(chunk)
+
+            # 移动到下一块（考虑重叠）
+            start = end - overlap if end < text_length else text_length
+
+        return chunks
+
     def _load_all_indices(self):
         """加载所有已保存的向量索引"""
         os.makedirs(self.storage_dir, exist_ok=True)

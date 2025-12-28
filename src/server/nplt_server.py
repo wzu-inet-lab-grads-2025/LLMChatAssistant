@@ -39,6 +39,7 @@ class Session:
     send_seq: int = 0                            # 发送序列号
     recv_seq: int = 0                            # 接收序列号
     conversation_history: Optional[ConversationHistory] = None  # 对话历史
+    upload_state: Optional[Dict] = None  # 文件上传状态
 
     HEARTBEAT_TIMEOUT = 90  # 心跳超时时间（秒）
 
@@ -295,6 +296,14 @@ class NPLTServer:
                 # 下载提议（通常由服务器发送给客户端，不应该收到）
                 print(f"[WARN] [SERVER] 收到 DOWNLOAD_OFFER 消息（不应该）")
 
+            elif message.type == MessageType.FILE_METADATA:
+                # 文件元数据
+                await self._handle_file_metadata(session, message)
+
+            elif message.type == MessageType.FILE_DATA:
+                # 文件数据
+                await self._handle_file_data(session, message)
+
             else:
                 print(f"[WARN] [SERVER] 未知消息类型: {message.type}")
 
@@ -344,6 +353,81 @@ class NPLTServer:
                 break
             except Exception as e:
                 print(f"[ERROR] [SERVER] 超时检查失败: {e}")
+
+    async def _handle_file_metadata(self, session: Session, message: NPLTMessage):
+        """处理文件元数据"""
+        try:
+            metadata = json.loads(message.data.decode('utf-8'))
+            filename = metadata['filename']
+            filesize = metadata['size']
+            
+            print(f"[INFO] [SERVER] 开始接收文件: {filename} ({filesize} 字节)")
+            
+            # 初始化上传状态
+            session.upload_state = {
+                'filename': filename,
+                'filesize': filesize,
+                'received_data': b'',
+                'chunks_received': 0
+            }
+            
+        except Exception as e:
+            print(f"[ERROR] [SERVER] 解析文件元数据失败: {e}")
+    
+    async def _handle_file_data(self, session: Session, message: NPLTMessage):
+        """处理文件数据"""
+        from ..storage.files import UploadedFile
+        
+        try:
+            if not session.upload_state:
+                print("[WARN] [SERVER] 收到文件数据但没有元数据")
+                return
+            
+            # 追加数据
+            session.upload_state['received_data'] += message.data
+            session.upload_state['chunks_received'] += 1
+            
+            # 检查是否接收完成
+            received = len(session.upload_state['received_data'])
+            expected = session.upload_state['filesize']
+            
+            if received >= expected:
+                # 接收完成，保存文件
+                filename = session.upload_state['filename']
+                file_data = session.upload_state['received_data']
+                
+                print(f"[INFO] [SERVER] 文件接收完成: {filename} ({received} 字节)")
+                
+                # 保存文件到 storage
+                try:
+                    uploaded_file = UploadedFile.create_from_content(
+                        content=file_data.decode('utf-8', errors='ignore'),
+                        filename=filename,
+                        storage_dir="storage/uploads"
+                    )
+                    
+                    print(f"[INFO] [SERVER] 文件已保存: {uploaded_file.file_id}")
+                    
+                    # 发送成功确认
+                    await session.send_message(
+                        MessageType.CHAT_TEXT,
+                        f"文件上传成功: {filename}".encode('utf-8')
+                    )
+                    
+                except Exception as e:
+                    print(f"[ERROR] [SERVER] 保存文件失败: {e}")
+                    await session.send_message(
+                        MessageType.CHAT_TEXT,
+                        f"文件保存失败: {str(e)}".encode('utf-8')
+                    )
+                
+                # 清除上传状态
+                session.upload_state = None
+                
+        except Exception as e:
+            print(f"[ERROR] [SERVER] 处理文件数据失败: {e}")
+            session.upload_state = None
+
 
     def get_session(self, session_id: str) -> Optional[Session]:
         """获取会话

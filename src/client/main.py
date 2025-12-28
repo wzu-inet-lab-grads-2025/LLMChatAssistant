@@ -200,16 +200,18 @@ class ClientMain:
             progress, task_id = self.ui.create_upload_progress(filename, filesize)
 
             with progress:
-                # TODO: 实现文件上传逻辑
-                # 这里应该通过 NPLT 协议发送文件数据
-                progress.update(task_id, advance=filesize)
+                # 发送文件元数据
+                await self.client.send_file_metadata(filename, filesize)
+
+                # 分块发送文件数据
+                await self.client.send_file_data(file_data, progress, task_id)
 
             self.logger.info(f"文件上传完成: {filename}")
             self.ui.print_success(f"文件上传完成: {filename}")
 
         except Exception as e:
-            self.logger.error(f"读取文件失败: {e}")
-            self.ui.print_error(f"读取文件失败: {e}")
+            self.logger.error(f"上传文件失败: {e}")
+            self.ui.print_error(f"上传文件失败: {e}")
 
     async def _command_model(self, args: list):
         """处理 /model 命令"""

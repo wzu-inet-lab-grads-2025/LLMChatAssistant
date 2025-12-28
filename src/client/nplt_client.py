@@ -266,6 +266,73 @@ class NPLTClient:
             text.encode('utf-8')
         )
 
+
+    async def send_file_metadata(self, filename: str, filesize: int) -> bool:
+        """发送文件元数据
+        
+        Args:
+            filename: 文件名
+            filesize: 文件大小
+            
+        Returns:
+            是否发送成功
+        """
+        metadata = {
+            "filename": filename,
+            "size": filesize
+        }
+        metadata_json = json.dumps(metadata, ensure_ascii=False)
+        
+        self.logger.info(f"发送文件元数据: {filename} ({filesize} 字节)")
+        return await self.send_message(
+            MessageType.FILE_METADATA,
+            metadata_json.encode('utf-8')
+        )
+    
+    async def send_file_data(self, file_data: bytes, progress=None, task_id=None) -> bool:
+        """分块发送文件数据
+        
+        Args:
+            file_data: 文件数据
+            progress: Rich 进度条对象（可选）
+            task_id: 进度条任务 ID（可选）
+            
+        Returns:
+            是否发送成功
+        """
+        chunk_size = 200  # 每块 200 字节（NPLT 协议限制）
+        total_size = len(file_data)
+        sent = 0
+        
+        self.logger.info(f"开始分块发送文件数据: {total_size} 字节，块大小 {chunk_size} 字节")
+        
+        # 分块发送
+        for i in range(0, total_size, chunk_size):
+            chunk = file_data[i:i + chunk_size]
+            
+            # 发送数据块
+            success = await self.send_message(
+                MessageType.FILE_DATA,
+                chunk
+            )
+            
+            if not success:
+                self.logger.error(f"发送文件数据块失败 (偏移: {i})")
+                return False
+            
+            sent += len(chunk)
+            
+            # 更新进度条
+            if progress and task_id is not None:
+                progress.update(task_id, advance=len(chunk))
+            
+            # 短暂延迟，避免发送过快
+            await asyncio.sleep(0.01)
+        
+        self.logger.info(f"文件数据发送完成: {sent} 字节")
+        return True
+
+
     def is_connected(self) -> bool:
         """检查是否已连接"""
         return self.connected and self.writer is not None
