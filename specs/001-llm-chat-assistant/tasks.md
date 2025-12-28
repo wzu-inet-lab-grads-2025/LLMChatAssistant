@@ -130,9 +130,9 @@
 
 ### 用户故事 1 的实施
 
-- [ ] T044 [US1] 在 src/server/main.py 中实现服务器入口和启动逻辑
-- [ ] T045 [US1] 在 src/server/main.py 中集成 ReActAgent 和 NPLT 服务器
-- [ ] T046 [US1] 在 src/server/nplt_server.py 中处理 CHAT_TEXT 和 AGENT_THOUGHT 消息
+- [X] T044 [US1] 在 src/server/main.py 中实现服务器入口和启动逻辑
+- [X] T045 [US1] 在 src/server/main.py 中集成 ReActAgent 和 NPLT 服务器
+- [X] T046 [US1] 在 src/server/nplt_server.py 中处理 CHAT_TEXT 和 AGENT_THOUGHT 消息
 - [ ] T047 [US1] 在 src/client/main.py 中实现用户输入循环和消息发送
 - [ ] T048 [US1] 在 src/client/ui.py 中实现流式 Markdown 渲染和 Agent 思考过程显示
 - [ ] T049 [US1] 为用户故事 1 添加日志记录 (logs/client.log 和 logs/server.log)

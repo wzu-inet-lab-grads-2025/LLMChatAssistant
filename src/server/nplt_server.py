@@ -100,6 +100,14 @@ class NPLTServer:
     # 消息处理器
     chat_handler: Optional[Callable] = None
 
+    def register_chat_handler(self, handler: Callable):
+        """注册聊天消息处理器
+
+        Args:
+            handler: 聊天消息处理器函数
+        """
+        self.chat_handler = handler
+
     async def start(self):
         """启动服务器"""
         self.server = await asyncio.start_server(
