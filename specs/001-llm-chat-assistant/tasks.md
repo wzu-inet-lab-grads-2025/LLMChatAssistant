@@ -125,8 +125,8 @@
 - [ ] T041 [P] [US1] 在 tests/contract/test_nplt.py 中编写 NPLT 协议编解码测试
 - [ ] T042 [P] [US1] 在 tests/integration/test_client_server.py 中编写客户端-服务器连接测试
 - [ ] T043 [US1] 在 tests/integration/test_agent.py 中编写 Agent 工具调用测试 (使用真实智谱 API)
-- [ ] T043a [P] [US1] 在 tests/contract/test_nplt_wire_format.py 中编写 NPLT 协议字节格式测试（验证字段长度、字节序等）
-- [ ] T043b [P] [US1] 在 tests/contract/test_rdt_wire_format.py 中编写 RDT 协议字节格式测试（验证字段长度、校验和计算等）
+- [X] T043a [P] [US1] 在 tests/contract/test_nplt_wire_format.py 中编写 NPLT 协议字节格式测试（验证字段长度、字节序等）
+- [X] T043b [P] [US1] 在 tests/contract/test_rdt_wire_format.py 中编写 RDT 协议字节格式测试（验证字段长度、校验和计算等）
 
 ### 用户故事 1 的实施
 
