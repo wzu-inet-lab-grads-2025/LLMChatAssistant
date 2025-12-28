@@ -38,8 +38,8 @@
 
 **目的**: 确保设置阶段完成并通过测试后进行版本提交
 
-- [ ] T008 验证项目结构和配置文件正确性
-- [ ] T009 提交设置阶段代码，描述项目初始化和配置 (遵循章程: 版本控制与测试纪律)
+- [X] T008 验证项目结构和配置文件正确性
+- [X] T009 提交设置阶段代码，描述项目初始化和配置 (遵循章程: 版本控制与测试纪律)
 
 ---
 
@@ -51,38 +51,38 @@
 
 ### 2.1 协议层实现
 
-- [ ] T010 在 src/protocols/nplt.py 中实现 NPLTMessage 类，包含编码/解码方法 (参考 contracts/nplt-protocol.md)
-- [ ] T011 在 src/protocols/nplt.py 中实现 MessageType 枚举 (CHAT_TEXT, AGENT_THOUGHT, DOWNLOAD_OFFER)
-- [ ] T012 [P] 在 src/protocols/rdt.py 中实现 RDTPacket 类，包含校验和计算 (参考 contracts/rdt-protocol.md)
-- [ ] T013 [P] 在 src/protocols/rdt.py 中实现 ACKPacket 类
+- [X] T010 在 src/protocols/nplt.py 中实现 NPLTMessage 类，包含编码/解码方法 (参考 contracts/nplt-protocol.md)
+- [X] T011 在 src/protocols/nplt.py 中实现 MessageType 枚举 (CHAT_TEXT, AGENT_THOUGHT, DOWNLOAD_OFFER)
+- [X] T012 [P] 在 src/protocols/rdt.py 中实现 RDTPacket 类，包含校验和计算 (参考 contracts/rdt-protocol.md)
+- [X] T013 [P] 在 src/protocols/rdt.py 中实现 ACKPacket 类
 
 ### 2.2 LLM Provider 抽象层
 
-- [ ] T014 在 src/llm/base.py 中定义 LLMProvider 抽象接口 (chat, embed, validate_api_key) (遵循章程: LLM Provider 扩展)
-- [ ] T015 在 src/llm/zhipu.py 中实现 ZhipuProvider，使用 zai-sdk 集成智谱 API (遵循章程: 真实集成)
-- [ ] T016 在 src/llm/zhipu.py 中实现模型切换底层功能，支持运行时在 glm-4-flash 和 glm-4.5-flash 之间切换（不涉及用户界面）
-- [ ] T017 在 src/llm/models.py 中定义模型配置常量 (DEFAULT_CHAT_MODEL, AVAILABLE_MODELS, EMBED_MODEL)
+- [X] T014 在 src/llm/base.py 中定义 LLMProvider 抽象接口 (chat, embed, validate_api_key) (遵循章程: LLM Provider 扩展)
+- [X] T015 在 src/llm/zhipu.py 中实现 ZhipuProvider，使用 zai-sdk 集成智谱 API (遵循章程: 真实集成)
+- [X] T016 在 src/llm/zhipu.py 中实现模型切换底层功能，支持运行时在 glm-4-flash 和 glm-4.5-flash 之间切换（不涉及用户界面）
+- [X] T017 在 src/llm/models.py 中定义模型配置常量 (DEFAULT_CHAT_MODEL, AVAILABLE_MODELS, EMBED_MODEL)
 
 ### 2.3 存储层实现
 
-- [ ] T018 在 src/storage/vector_store.py 中实现 VectorIndex 类，包含 search 方法 (参考 data-model.md)
-- [ ] T019 在 src/storage/vector_store.py 中实现向量索引持久化 (保存到 storage/vectors/)
-- [ ] T020 在 src/storage/history.py 中实现 ConversationHistory 类，支持 add_message 和 get_context (参考 data-model.md)
-- [ ] T021 在 src/storage/history.py 中实现对话历史持久化 (保存到 storage/history/)
-- [ ] T022 [P] 在 src/storage/files.py 中实现 UploadedFile 类，包含文件大小验证 (10MB 限制)
+- [X] T018 在 src/storage/vector_store.py 中实现 VectorIndex 类，包含 search 方法 (参考 data-model.md)
+- [X] T019 在 src/storage/vector_store.py 中实现向量索引持久化 (保存到 storage/vectors/)
+- [X] T020 在 src/storage/history.py 中实现 ConversationHistory 类，支持 add_message 和 get_context (参考 data-model.md)
+- [X] T021 在 src/storage/history.py 中实现对话历史持久化 (保存到 storage/history/)
+- [X] T022 [P] 在 src/storage/files.py 中实现 UploadedFile 类，包含文件大小验证 (10MB 限制)
 
 ### 2.4 工具层实现
 
-- [ ] T023 在 src/tools/base.py 中定义 Tool 基类 (execute 方法)
-- [ ] T024 [P] 在 src/tools/command.py 中实现 CommandTool，白名单命令执行 (ls, cat, grep 等)
-- [ ] T025 [P] 在 src/tools/monitor.py 中实现 MonitorTool，系统监控 (CPU、内存、磁盘)
-- [ ] T026 在 src/tools/rag.py 中实现 RAGTool，向量检索功能
+- [X] T023 在 src/tools/base.py 中定义 Tool 基类 (execute 方法)
+- [X] T024 [P] 在 src/tools/command.py 中实现 CommandTool，白名单命令执行 (ls, cat, grep 等)
+- [X] T025 [P] 在 src/tools/monitor.py 中实现 MonitorTool，系统监控 (CPU、内存、磁盘)
+- [X] T026 在 src/tools/rag.py 中实现 RAGTool，向量检索功能
 
 ### 2.5 Agent 实现
 
-- [ ] T027 在 src/server/agent.py 中实现 ReActAgent 类，支持最多 5 轮工具调用
-- [ ] T028 在 src/server/agent.py 中实现工具调用超时控制 (5 秒超时)
-- [ ] T029 在 src/server/agent.py 中实现 API 失败降级到本地命令执行
+- [X] T027 在 src/server/agent.py 中实现 ReActAgent 类，支持最多 5 轮工具调用
+- [X] T028 在 src/server/agent.py 中实现工具调用超时控制 (5 秒超时)
+- [X] T029 在 src/server/agent.py 中实现 API 失败降级到本地命令执行
 
 ### 2.6 网络通信基础
 
