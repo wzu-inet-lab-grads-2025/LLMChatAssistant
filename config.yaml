@@ -47,14 +47,12 @@ file_access:
     - "/etc/shadow"           # 系统阴影文件
     - "/etc/*secret*"         # 其他密钥文件
 
-  # RAG 索引配置
-  indexing:
-    auto_index: true          # 自动索引白名单中的文件
-    max_file_size: 10485760   # 最大索引文件大小 (10MB)
-    chunk_size: 500           # 文本分块大小
-    chunk_overlap: 50         # 分块重叠大小
+  # RAG 索引配置（扁平化，与FileAccessConfig类定义匹配）
+  auto_index: true            # 自动索引白名单中的文件
+  max_file_size: 10485760     # 最大索引文件大小 (10MB)
+  chunk_size: 500             # 文本分块大小
+  chunk_overlap: 50           # 分块重叠大小
 
-  # 命令执行限制
-  command_limits:
-    max_output_size: 102400   # 命令输出最大 100KB
-    max_files_per_glob: 100   # glob 匹配最大文件数
+  # 命令执行限制（扁平化，与FileAccessConfig类定义匹配）
+  max_output_size: 102400      # 命令输出最大 100KB
+  max_files_per_glob: 100      # glob 匹配最大文件数
