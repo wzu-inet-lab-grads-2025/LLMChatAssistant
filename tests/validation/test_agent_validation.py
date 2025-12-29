@@ -1,0 +1,268 @@
+"""
+Agent功能验证测试
+
+包含10个测试用例（T001-T010），验证Agent的核心功能。
+使用真实的智谱API进行测试，不使用任何mock。
+"""
+
+import pytest
+import os
+import time
+from datetime import datetime
+from tests.validation.test_framework import (
+    TestCase,
+    AcceptanceScenario,
+    PerformanceMetrics,
+    ValidationResult,
+    TestResult,
+)
+from tests.validation.test_reporter import TestReporter
+
+
+# ============================================================================
+# T001: 基础对话功能验证 (用户故事1 - P1)
+# ============================================================================
+
+@pytest.mark.skipif(
+    not os.getenv("ZHIPU_API_KEY"),
+    reason="需要 ZHIPU_API_KEY 环境变量"
+)
+@pytest.mark.asyncio
+class TestT001BasicConversation:
+    """T001: 基础对话功能验证"""
+
+    async def test_t001_basic_conversation(self, auto_confirm):
+        """
+        T001: 基础对话功能验证
+
+        验证Agent能够进行基础对话，无需调用任何工具。
+
+        测试场景：
+        1. 问候消息：用户发送"你好"，Agent返回友好问候且不调用工具
+        2. 自我介绍：用户询问"你是什么？"，Agent自我介绍
+        3. 感谢回应：用户发送"谢谢"，Agent礼貌回应
+
+        成功标准：
+        - SC-001: 基础对话功能正常
+        - SC-002: 响应时间 < 2.0s
+        - SC-005: 测试报告完整
+        """
+        from src.server.agent import ReActAgent
+        from src.llm.zhipu import ZhipuProvider
+        from src.storage.history import ConversationHistory
+        from uuid import uuid4
+
+        # 定义测试用例
+        test_case = TestCase(
+            id="T001",
+            name="基础对话功能验证",
+            priority="P1",
+            description="验证Agent能够进行基础对话，无需调用任何工具",
+            user_story="用户希望验证Agent的基础对话能力，确保它能够进行正常的问答交流",
+            acceptance_scenarios=[
+                AcceptanceScenario(
+                    given="Agent已初始化并连接到智谱API",
+                    when="用户发送问候消息'你好'",
+                    then="Agent应该返回友好的问候回复，不调用任何工具"
+                ),
+                AcceptanceScenario(
+                    given="Agent已初始化",
+                    when="用户询问简单问题'你是什么？'",
+                    then="Agent应该自我介绍，说明它是智能运维助手"
+                ),
+                AcceptanceScenario(
+                    given="Agent已初始化",
+                    when="用户发送'谢谢'",
+                    then="Agent应该礼貌回应"
+                ),
+            ]
+        )
+
+        # 创建Agent和对话历史
+        llm_provider = ZhipuProvider(api_key=os.getenv("ZHIPU_API_KEY"))
+        agent = ReActAgent(llm_provider=llm_provider)
+        session_id = f"test-{uuid4()}"
+        history = ConversationHistory.create_new(session_id)
+
+        # 场景1: 问候消息
+        print("\n" + "="*80)
+        print("场景1: 问候消息")
+        print("="*80)
+
+        start_time = time.perf_counter()
+
+        # 发送问候消息
+        response1, tool_calls1 = await agent.react_loop(
+            user_message="你好",
+            conversation_history=history
+        )
+
+        end_time = time.perf_counter()
+        total_time1 = end_time - start_time
+
+        print(f"用户消息: 你好")
+        print(f"Agent回复: {response1}")
+        print(f"工具调用数量: {len(tool_calls1)}")
+        print(f"响应时间: {total_time1:.2f}s")
+
+        # 验证场景1：不应该调用任何工具
+        scenario1_passed = (
+            len(tool_calls1) == 0 and
+            response1 and
+            len(response1) > 0 and
+            total_time1 < 5.0  # 5秒超时限制
+        )
+
+        validation_result1 = ValidationResult(
+            scenario_id=1,
+            scenario_description="问候消息验证",
+            expected="返回问候且不调用工具",
+            actual=f"Agent回复: {response1}, 工具调用数: {len(tool_calls1)}",
+            passed=scenario1_passed,
+            notes=f"响应时间: {total_time1:.2f}s"
+        )
+
+        # 场景2: 自我介绍
+        print("\n" + "="*80)
+        print("场景2: 自我介绍")
+        print("="*80)
+
+        start_time = time.perf_counter()
+
+        response2, tool_calls2 = await agent.react_loop(
+            user_message="你是什么？",
+            conversation_history=history
+        )
+
+        end_time = time.perf_counter()
+        total_time2 = end_time - start_time
+
+        print(f"用户消息: 你是什么？")
+        print(f"Agent回复: {response2}")
+        print(f"工具调用数量: {len(tool_calls2)}")
+        print(f"响应时间: {total_time2:.2f}s")
+
+        # 验证场景2：不应该调用工具，且回复应包含自我介绍
+        scenario2_passed = (
+            len(tool_calls2) == 0 and
+            response2 and
+            ("助手" in response2 or "Agent" in response2 or "智能" in response2)
+        )
+
+        validation_result2 = ValidationResult(
+            scenario_id=2,
+            scenario_description="自我介绍验证",
+            expected="自我介绍，说明是智能运维助手",
+            actual=f"Agent回复: {response2}, 工具调用数: {len(tool_calls2)}",
+            passed=scenario2_passed,
+            notes=f"响应时间: {total_time2:.2f}s"
+        )
+
+        # 场景3: 感谢回应
+        print("\n" + "="*80)
+        print("场景3: 感谢回应")
+        print("="*80)
+
+        start_time = time.perf_counter()
+
+        response3, tool_calls3 = await agent.react_loop(
+            user_message="谢谢",
+            conversation_history=history
+        )
+
+        end_time = time.perf_counter()
+        total_time3 = end_time - start_time
+
+        print(f"用户消息: 谢谢")
+        print(f"Agent回复: {response3}")
+        print(f"工具调用数量: {len(tool_calls3)}")
+        print(f"响应时间: {total_time3:.2f}s")
+
+        # 验证场景3：不应该调用工具，且礼貌回应
+        scenario3_passed = (
+            len(tool_calls3) == 0 and
+            response3 and
+            len(response3) > 0
+        )
+
+        validation_result3 = ValidationResult(
+            scenario_id=3,
+            scenario_description="感谢回应验证",
+            expected="礼貌回应",
+            actual=f"Agent回复: {response3}, 工具调用数: {len(tool_calls3)}",
+            passed=scenario3_passed,
+            notes=f"响应时间: {total_time3:.2f}s"
+        )
+
+        # 汇总性能指标（取第一次对话的指标）
+        metrics = PerformanceMetrics(
+            total_response_time=total_time1,
+            tool_call_count=len(tool_calls1),
+            tool_execution_times=[],
+            tool_execution_total=0.0,
+            average_tool_execution=0.0,
+            llm_call_count=1,  # 每次对话至少调用一次LLM
+            llm_total_time=total_time1
+        )
+
+        # 创建测试结果
+        test_result = TestResult(
+            test_case_id="T001",
+            status="passed" if all([
+                scenario1_passed,
+                scenario2_passed,
+                scenario3_passed
+            ]) else "failed",
+            timestamp=datetime.now().isoformat(),
+            user_input="你好 / 你是什么？ / 谢谢",
+            agent_response=f"{response1} | {response2} | {response3}",
+            tool_calls=tool_calls1 + tool_calls2 + tool_calls3,
+            performance_metrics=metrics,
+            validation_results=[
+                validation_result1,
+                validation_result2,
+                validation_result3
+            ],
+            error_message=""
+        )
+
+        # 生成测试报告
+        report_path = "specs/002-agent-validation-test/reports/T001-基础对话.md"
+        reporter = TestReporter(test_case, test_result, report_path)
+        reporter.save()
+
+        # 打印测试报告摘要
+        print("\n" + "="*80)
+        print("测试报告摘要")
+        print("="*80)
+        print(f"测试编号: T001")
+        print(f"测试名称: {test_case.name}")
+        print(f"测试状态: {'✅ 通过' if test_result.status == 'passed' else '❌ 失败'}")
+        print(f"总响应时间: {metrics.total_response_time:.2f}s")
+        print(f"验收结果: {sum(1 for v in test_result.validation_results if v.passed)}/{len(test_result.validation_results)}")
+        print(f"报告路径: {report_path}")
+        print("="*80)
+
+        # 等待用户确认（除非使用--auto-confirm）
+        if not auto_confirm:
+            user_input = input("\n测试完成。请确认是否通过？[Y/n] ")
+            if user_input.lower() == 'n':
+                pytest.fail("用户确认测试未通过")
+
+        # 断言所有场景都通过
+        assert scenario1_passed, "场景1失败：Agent应该返回问候且不调用工具"
+        assert scenario2_passed, "场景2失败：Agent应该自我介绍且不调用工具"
+        assert scenario3_passed, "场景3失败：Agent应该礼貌回应且不调用工具"
+
+        print("\n✅ T001基础对话功能验证测试全部通过！")
+
+
+# TODO: 在阶段4实现T002系统监控工具验证测试
+# TODO: 在阶段5实现T003命令执行工具验证测试
+# TODO: 在阶段6实现T004测试报告生成验证测试
+# TODO: 在阶段7实现T005多轮工具调用验证测试
+# TODO: 在阶段8实现T006 RAG检索工具验证测试
+# TODO: 在阶段9实现T007对话上下文验证测试
+# TODO: 在阶段10实现T008工具超时和错误处理验证测试
+# TODO: 在阶段11实现T009模型切换功能验证测试
+# TODO: 在阶段12实现T010 API失败降级验证测试

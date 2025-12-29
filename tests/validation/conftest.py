@@ -11,10 +11,12 @@ from pathlib import Path
 
 def pytest_addoption(parser):
     """添加pytest命令行选项"""
-    parser.addoption(
+    group = parser.getgroup('validation', 'Agent validation testing')
+    group.addoption(
         "--auto-confirm",
         action="store_true",
         default=False,
+        dest="auto_confirm",
         help="自动确认测试通过，不等待用户输入（适用于CI/CD）"
     )
 
@@ -47,11 +49,11 @@ def pytest_configure(config):
 @pytest.fixture
 def auto_confirm(request):
     """返回auto-confirm命令行参数值"""
-    return request.config.getoption("--auto_confirm")
+    return request.config.getoption("auto_confirm")
 
 @pytest.fixture
 async def fresh_agent():
-    """为每个测试创建新的Agent实例"""
+    """为每个测试创建新的Agent实例（async fixture，由pytest-asyncio自动处理）"""
     from src.server.agent import ReActAgent
     from src.llm.zhipu import ZhipuProvider
 
