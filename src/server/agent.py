@@ -9,14 +9,16 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from ..llm.base import LLMProvider
+from ..llm.base import LLMProvider, Message
 from ..storage.history import ConversationHistory, ToolCall
 from ..tools.base import Tool, ToolExecutionResult
 from ..tools.command import CommandTool
 from ..tools.monitor import MonitorTool
 from ..tools.rag import RAGTool
+from ..utils.path_validator import get_path_validator
+from ..utils.config import get_config
 
 
 @dataclass
@@ -27,22 +29,105 @@ class ReActAgent:
     tools: Dict[str, Tool] = field(default_factory=dict)
     max_tool_rounds: int = 5
     tool_timeout: int = 5  # 工具执行超时（秒）
+    status_callback: callable = None  # 状态更新回调函数
+    path_validator: Optional[Any] = None  # 路径验证器
 
     def __post_init__(self):
         """初始化工具"""
         # 如果没有提供工具，使用默认工具
         if not self.tools:
             from ..storage.vector_store import VectorStore
-            vector_store = VectorStore()
+            from ..storage.index_manager import IndexManager
 
+            # 获取配置
+            config = get_config()
+
+            # 初始化路径验证器
+            if self.path_validator is None:
+                self.path_validator = get_path_validator(config.file_access)
+
+            # 初始化组件
+            vector_store = VectorStore()
+            index_manager = IndexManager(
+                vector_store=vector_store,
+                llm_provider=self.llm_provider,
+                path_validator=self.path_validator,
+                config=config.file_access
+            )
+
+            # 创建工具实例（带路径验证器）
             self.tools = {
-                "command_executor": CommandTool(),
+                "command_executor": CommandTool(
+                    path_validator=self.path_validator,
+                    max_output_size=config.file_access.max_output_size
+                ),
                 "sys_monitor": MonitorTool(),
-                "rag_search": RAGTool(self.llm_provider, vector_store)
+                "rag_search": RAGTool(
+                    llm_provider=self.llm_provider,
+                    vector_store=vector_store,
+                    index_manager=index_manager,
+                    path_validator=self.path_validator,
+                    auto_index=config.file_access.auto_index
+                )
             }
 
-    def think(self, user_message: str, conversation_history: ConversationHistory) -> str:
-        """思考并生成回复
+    async def _send_status(self, status_type: str, content: str):
+        """发送状态更新
+
+        Args:
+            status_type: 状态类型 (thinking, tool_call, generating)
+            content: 状态内容
+        """
+        if self.status_callback:
+            import json
+            status_msg = json.dumps({
+                "type": status_type,
+                "content": content
+            }, ensure_ascii=False)
+            await self.status_callback(status_msg)
+
+    async def think_stream(self, user_message: str, conversation_history: ConversationHistory):
+        """思考并生成回复（流式输出）
+
+        Args:
+            user_message: 用户消息
+            conversation_history: 对话历史
+
+        Yields:
+            str: 流式输出的文本片段
+        """
+        try:
+            # 发送状态：正在分析
+            await self._send_status("thinking", "正在分析用户意图")
+
+            # 获取上下文
+            context = conversation_history.get_context(max_turns=5)
+
+            # 构建消息列表
+            messages = []
+            for msg in context:
+                messages.append(Message(role=msg.role, content=msg.content))
+
+            # 添加当前用户消息
+            messages.append(Message(role="user", content=user_message))
+
+            # 发送状态：正在生成
+            await self._send_status("generating", "正在生成回复")
+
+            # 调用 LLM 流式输出
+            async for chunk in self.llm_provider.chat_stream(
+                messages=messages,
+                temperature=0.7
+            ):
+                yield chunk
+
+        except Exception as e:
+            # API 调用失败，降级到本地命令执行
+            fallback_response = self._fallback_to_local(user_message, str(e))
+            yield fallback_response
+
+    async def think(self, user_message: str, conversation_history: ConversationHistory) -> str:
+        """思考并生成回复（非流式，保持向后兼容）
 
         Args:
             user_message: 用户消息
@@ -58,19 +143,13 @@ class ReActAgent:
             # 构建消息列表
             messages = []
             for msg in context:
-                messages.append({
-                    "role": msg.role,
-                    "content": msg.content
-                })
+                messages.append(Message(role=msg.role, content=msg.content))
 
             # 添加当前用户消息
-            messages.append({
-                "role": "user",
-                "content": user_message
-            })
+            messages.append(Message(role="user", content=user_message))
 
             # 调用 LLM
-            response = self.llm_provider.chat(
+            response = await self.llm_provider.chat(
                 messages=messages,
                 temperature=0.7
             )
@@ -81,7 +160,7 @@ class ReActAgent:
             # API 调用失败，降级到本地命令执行
             return self._fallback_to_local(user_message, str(e))
 
-    def react_loop(
+    async def react_loop(
         self,
         user_message: str,
         conversation_history: ConversationHistory
@@ -105,14 +184,16 @@ class ReActAgent:
 
             try:
                 # 思考：调用 LLM 决定是否需要使用工具
-                thought = self._think_and_decide(current_message, conversation_history)
+                await self._send_status("thinking", f"正在思考 (第 {round_count} 轮)")
+                thought = await self._think_and_decide(current_message, conversation_history)
 
                 # 检查是否需要使用工具
                 tool_use = self._parse_tool_use(thought)
 
                 if not tool_use:
                     # 不需要工具，返回最终回复
-                    final_response = self._generate_final_response(
+                    await self._send_status("generating", "正在生成最终回复")
+                    final_response = await self._generate_final_response(
                         current_message,
                         conversation_history,
                         tool_calls
@@ -129,6 +210,9 @@ class ReActAgent:
                     continue
 
                 tool = self.tools[tool_name]
+
+                # 发送状态：正在调用工具
+                await self._send_status("tool_call", f"正在调用工具: {tool_name}")
 
                 # 执行工具（带超时控制）
                 start_time = time.time()
@@ -166,14 +250,15 @@ class ReActAgent:
                 return fallback_response, tool_calls
 
         # 达到最大轮数，生成最终回复
-        final_response = self._generate_final_response(
+        await self._send_status("generating", "正在生成最终回复")
+        final_response = await self._generate_final_response(
             current_message,
             conversation_history,
             tool_calls
         )
         return final_response, tool_calls
 
-    def _think_and_decide(self, message: str, conversation_history: ConversationHistory) -> str:
+    async def _think_and_decide(self, message: str, conversation_history: ConversationHistory) -> str:
         """思考并决定是否使用工具
 
         Args:
@@ -206,16 +291,13 @@ ARGS: {"metric": "all"}
         context = conversation_history.get_context(max_turns=3)
 
         # 构建消息列表
-        messages = [{"role": "system", "content": system_prompt}]
+        messages = [Message(role="system", content=system_prompt)]
         for msg in context:
-            messages.append({
-                "role": msg.role,
-                "content": msg.content
-            })
-        messages.append({"role": "user", "content": message})
+            messages.append(Message(role=msg.role, content=msg.content))
+        messages.append(Message(role="user", content=message))
 
         # 调用 LLM
-        response = self.llm_provider.chat(
+        response = await self.llm_provider.chat(
             messages=messages,
             temperature=0.7
         )
@@ -249,7 +331,7 @@ ARGS: {"metric": "all"}
         except json.JSONDecodeError:
             return {"name": tool_name, "args": {}}
 
-    def _generate_final_response(
+    async def _generate_final_response(
         self,
         message: str,
         conversation_history: ConversationHistory,
@@ -283,8 +365,8 @@ ARGS: {"metric": "all"}
 
         # 调用 LLM
         try:
-            response = self.llm_provider.chat(
-                messages=[{"role": "user", "content": prompt}],
+            response = await self.llm_provider.chat(
+                messages=[Message(role="user", content=prompt)],
                 temperature=0.7
             )
             return response

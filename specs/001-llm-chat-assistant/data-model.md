@@ -49,18 +49,19 @@ class MessageType(IntEnum):
 
 ### 3. Session (会话)
 
-**描述**: 客户端与服务器的一次连接会话
+**描述**: 客户端与服务器的一次连接会话（TCP 连接层）
 
 ```python
 @dataclass
 class Session:
-    """客户端会话"""
+    """客户端会话（TCP 连接层）"""
     session_id: str              # 会话唯一标识 (UUID)
     client_addr: Tuple[str, int] # 客户端地址 (IP, Port)
     connected_at: datetime       # 连接时间
     last_heartbeat: datetime     # 最后心跳时间
     state: SessionState          # 会话状态
     message_queue: asyncio.Queue # 消息队列
+    conversation_session_id: str | None = None  # 关联的对话会话 ID
 
     def is_timeout(self, timeout: int = 90) -> bool:
         """检查是否超时"""
@@ -69,12 +70,241 @@ class Session:
 
 **关系**:
 - 包含多个 Message
-- 关联一个 ConversationHistory
+- 关联一个 ConversationSession（对话会话）
 
 **验证规则**:
 - `session_id` 必须是有效的 UUID 格式
 - `connected_at` <= `last_heartbeat`
 - 心跳超时时间: 90 秒
+
+### 3.1. ConversationSession (对话会话)
+
+**描述**: 用户的多会话管理实体（持久化对话会话）
+
+```python
+@dataclass
+class ConversationSession:
+    """对话会话（多会话管理）"""
+    session_id: str               # 会话唯一标识 (UUID)
+    name: str                     # 会话名称（AI 自动生成或用户手动设置）
+    created_at: datetime          # 创建时间
+    updated_at: datetime          # 最后更新时间
+    last_accessed: datetime       # 最后访问时间
+    message_count: int            # 消息数量
+    archived: bool = False        # 是否已归档
+    archive_path: str | None = None  # 归档文件路径（如果已归档）
+
+    def should_archive(self, days: int = 30) -> bool:
+        """检查是否应该归档"""
+        if self.archived:
+            return False
+        days_since_access = (datetime.now() - self.last_accessed).days
+        return days_since_access >= days
+
+    def generate_default_name(self) -> str:
+        """生成默认名称"""
+        return self.created_at.strftime("%Y-%m-%d %H:%M")
+```
+
+**关系**:
+- 包含一个 ConversationHistory
+- 被多个 Session（TCP 连接）关联
+
+**验证规则**:
+- `session_id` 必须是有效的 UUID 格式
+- `name` 不能为空（默认基于时间生成）
+- `created_at` <= `updated_at` <= `last_accessed`
+- `message_count` >= 0
+- 归档策略：超过 30 天未访问自动归档
+
+**会话命名策略**:
+- 默认名称：创建时间（如 "2025-12-29 10:30"）
+- AI 自动命名：在第 3 轮对话后，使用 LLM 分析对话主题生成名称
+- 手动重命名：未来支持用户自定义名称
+
+### 3.2. SessionManager (会话管理器)
+
+**描述**: 多会话管理核心组件
+
+```python
+@dataclass
+class SessionManager:
+    """会话管理器"""
+    sessions: Dict[str, ConversationSession]  # 活跃会话
+    current_session_id: str | None = None     # 当前活跃会话 ID
+    storage_dir: str = "storage/history"      # 存储目录
+    archive_dir: str = "storage/history/archive"  # 归档目录
+    llm_provider: LLMProvider | None = None   # LLM Provider（用于自动命名）
+
+    def create_session(self) -> str:
+        """创建新会话
+
+        Returns:
+            会话 ID
+        """
+        session_id = str(uuid.uuid4())
+        now = datetime.now()
+        session = ConversationSession(
+            session_id=session_id,
+            name=now.strftime("%Y-%m-%d %H:%M"),
+            created_at=now,
+            updated_at=now,
+            last_accessed=now,
+            message_count=0
+        )
+        self.sessions[session_id] = session
+        self.current_session_id = session_id
+        return session_id
+
+    def switch_session(self, session_id: str) -> bool:
+        """切换会话
+
+        Args:
+            session_id: 目标会话 ID
+
+        Returns:
+            是否切换成功
+        """
+        if session_id not in self.sessions:
+            return False
+        self.current_session_id = session_id
+        self.sessions[session_id].last_accessed = datetime.now()
+        return True
+
+    def list_sessions(self) -> List[SessionInfo]:
+        """列出所有会话
+
+        Returns:
+            会话信息列表
+        """
+        return [
+            SessionInfo(
+                session_id=s.session_id,
+                name=s.name,
+                message_count=s.message_count,
+                last_accessed=s.last_accessed,
+                is_current=(s.session_id == self.current_session_id)
+            )
+            for s in self.sessions.values()
+        ]
+
+    def delete_session(self, session_id: str) -> bool:
+        """删除会话
+
+        Args:
+            session_id: 要删除的会话 ID
+
+        Returns:
+            是否删除成功
+        """
+        if session_id not in self.sessions:
+            return False
+        del self.sessions[session_id]
+        if self.current_session_id == session_id:
+            self.current_session_id = None
+        return True
+
+    def auto_name_session(self, session_id: str, conversation_history: ConversationHistory):
+        """AI 自动命名会话
+
+        Args:
+            session_id: 会话 ID
+            conversation_history: 对话历史
+
+        在第 3 轮对话后自动调用
+        """
+        if session_id not in self.sessions:
+            return
+
+        if not self.llm_provider:
+            return
+
+        # 获取前几轮对话
+        context = conversation_history.get_context(max_turns=3)
+        if len(context) < 4:  # 至少 2 轮对话
+            return
+
+        # 构建 LLM 提示
+        messages = [
+            {"role": "system", "content": "你是一个会话命名助手。根据对话内容，生成一个简洁的会话名称（不超过 10 个字）。仅返回名称，不要其他内容。"},
+            {"role": "user", "content": "\n".join([m.content for m in context])}
+        ]
+
+        try:
+            name = self.llm_provider.chat(messages=messages, temperature=0.5).strip()
+            if len(name) > 20:
+                name = name[:20] + "..."
+            self.sessions[session_id].name = name
+            self.sessions[session_id].updated_at = datetime.now()
+        except Exception:
+            pass  # 保持默认名称
+
+    def archive_old_sessions(self, days: int = 30) -> int:
+        """归档旧会话
+
+        Args:
+            days: 归档天数阈值
+
+        Returns:
+            归档的会话数量
+        """
+        to_archive = [
+            s for s in self.sessions.values()
+            if s.should_archive(days)
+        ]
+
+        for session in to_archive:
+            self._archive_session(session)
+
+        return len(to_archive)
+
+    def _archive_session(self, session: ConversationSession):
+        """归档单个会话
+
+        Args:
+            session: 要归档的会话
+        """
+        archive_month = session.created_at.strftime("%Y-%m")
+        archive_dir = os.path.join(self.archive_dir, archive_month)
+        os.makedirs(archive_dir, exist_ok=True)
+
+        # 移动会话文件
+        src_path = os.path.join(self.storage_dir, f"session_{session.created_at.strftime('%Y%m%d')}_{session.session_id[:8]}.json")
+        dst_path = os.path.join(archive_dir, os.path.basename(src_path))
+
+        if os.path.exists(src_path):
+            os.rename(src_path, dst_path)
+            session.archived = True
+            session.archive_path = dst_path
+
+        # 从活跃会话中移除
+        del self.sessions[session.session_id]
+```
+
+**关系**:
+- 管理多个 ConversationSession
+- 使用 LLMProvider 生成会话名称
+- 协调 ConversationHistory 的加载和保存
+
+**验证规则**:
+- `current_session_id` 必须在 `sessions` 中（或为 None）
+- 归档目录按月组织（格式：YYYY-MM）
+- 归档后的会话从活跃会话中移除
+
+### 3.3. SessionInfo (会话信息)
+
+**描述**: 会话列表显示信息
+
+```python
+@dataclass
+class SessionInfo:
+    """会话信息（用于会话列表显示）"""
+    session_id: str          # 会话 ID
+    name: str                # 会话名称
+    message_count: int       # 消息数量
+    last_accessed: datetime  # 最后访问时间
+    is_current: bool         # 是否为当前会话
+```
 
 ### 4. SessionState (会话状态)
 
@@ -512,18 +742,26 @@ class FileTransferOffer:
 ## 关系图
 
 ```
+# TCP 连接层
 Session (1) ----< (N) Message
   |
-  +---- (1) ConversationHistory
-            |
-            +---- (N) ChatMessage
-                     |
-                     +---- (N) ToolCall
+  +---- (1) ConversationSession  # 关联持久化对话会话
 
+# 多会话管理层
+SessionManager ----< (N) ConversationSession
+                        |
+                        +---- (1) ConversationHistory
+                                  |
+                                  +---- (N) ChatMessage
+                                           |
+                                           +---- (N) ToolCall
+
+# 文件与检索层
 UploadedFile (1) ---- (1) VectorIndex
   |
   +---- (N) Chunk
 
+# 文件传输层
 Session (1) ---- (1) RDTSession
   |
   +---- (N) RDTPacket
@@ -546,15 +784,25 @@ storage/
 │         "metadata": [...]
 │       }
 ├── history/
-│   ├── current.json            # 当前会话历史
+│   ├── session_20251228_abc123.json  # 活跃会话
 │   │   {
 │     "session_id": "...",
+│     "name": "系统监控",
 │     "messages": [
 │       {"role": "user", "content": "...", "timestamp": "..."},
 │       {"role": "assistant", "content": "...", "timestamp": "..."}
-│     ]
+│     ],
+│     "created_at": "...",
+│     "updated_at": "...",
+│     "message_count": 15
 │   }
-│   └── session_{date}.json     # 历史会话
+│   └── session_20251229_def456.json
+├── archive/
+│   ├── 2024-12/               # 按月归档
+│   │   ├── session_20241101_xxx.json
+│   │   └── session_20241115_yyy.json
+│   └── 2025-01/
+│       └── session_20250105_zzz.json
 └── uploads/
     └── {file_id}/
         └── {original_filename}  # 原始文件

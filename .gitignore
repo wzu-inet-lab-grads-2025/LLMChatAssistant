@@ -60,6 +60,10 @@ Thumbs.db
 .coverage
 htmlcov/
 *.cover
+# Root-level test scripts (temporary)
+test_*.py
+demo_*.py
+diagnose_*.py
 
 # Temporary files
 *.tmp

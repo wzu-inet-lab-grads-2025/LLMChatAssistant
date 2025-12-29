@@ -6,7 +6,7 @@ LLM Provider 抽象接口
 """
 
 from abc import ABC, abstractmethod
-from typing import List, AsyncIterator
+from typing import List
 
 
 class Message:
@@ -37,20 +37,20 @@ class LLMProvider(ABC):
         self,
         messages: List[Message],
         model: str,
-        stream: bool = True,
+        stream: bool = False,
         **kwargs
-    ) -> AsyncIterator[str]:
+    ) -> str:
         """
-        聊天接口，支持流式输出
+        聊天接口
 
         Args:
             messages: 消息列表
             model: 模型名称
-            stream: 是否流式输出
+            stream: 是否流式输出（默认 False）
             **kwargs: 其他参数（temperature, max_tokens 等）
 
-        Yields:
-            str: 流式输出的文本片段
+        Returns:
+            str: 完整的响应文本
 
         Raises:
             Exception: API 调用失败

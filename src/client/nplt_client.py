@@ -9,7 +9,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Optional
-
+import json
 from ..protocols.nplt import MessageType, NPLTMessage
 from ..utils.logger import get_client_logger
 from .ui import ClientUI
@@ -41,6 +41,12 @@ class NPLTClient:
     # 下载处理器
     download_handler: Optional[Callable] = None
 
+    # 响应完成事件（用于通知主程序响应已完成）
+    response_event: asyncio.Event = None
+
+    # 流式输出状态
+    is_streaming: bool = False  # 是否正在流式输出
+
     # 日志记录器（在 __post_init__ 中初始化）
     logger = None
 
@@ -48,6 +54,7 @@ class NPLTClient:
         """初始化"""
         if self.ui is None:
             self.ui = ClientUI()
+        self.response_event = asyncio.Event()
         self.logger = get_client_logger()
 
     async def connect(self) -> bool:
@@ -117,6 +124,9 @@ class NPLTClient:
             return False
 
         try:
+            # 清空响应事件（准备接收新响应）
+            self.response_event.clear()
+
             # 创建消息
             message = NPLTMessage(
                 type=message_type,
@@ -189,7 +199,13 @@ class NPLTClient:
             return None
 
         except Exception as e:
-            self.ui.print_error(f"接收消息失败: {e}")
+            # 连接已关闭或网络错误
+            error_str = str(e)
+            if "0 bytes read" in error_str or "Connection" in error_str:
+                # 连接关闭，不显示错误信息（正常情况）
+                self.logger.debug(f"连接已关闭: {e}")
+            else:
+                self.ui.print_error(f"接收消息失败: {e}")
             self.connected = False
             return None
 
@@ -231,18 +247,72 @@ class NPLTClient:
                 if text == "HEARTBEAT":
                     return
 
-                # 显示消息
-                self.ui.print_message("assistant", text)
+                # 检查是否为流式输出结束标记（空消息）
+                if not text or not text.strip():
+                    if self.is_streaming:
+                        await self.ui.stop_live_display()  # 渐进显示剩余内容
+                        self.is_streaming = False
+                        self.logger.debug("流式输出结束")
+                        # 通知主程序响应完成
+                        self.response_event.set()
+                    return
+
+                # 如果正在流式输出，追加内容
+                if self.is_streaming:
+                    self.ui.stream_content(text)
+                else:
+                    # 非流式模式，直接显示完整消息
+                    self.ui.print_message("assistant", text)
+                    # 通知主程序响应完成
+                    self.response_event.set()
 
                 # 调用消息处理器
                 if self.message_handler:
                     await self.message_handler(message)
 
             elif message.type == MessageType.AGENT_THOUGHT:
-                # Agent 思考过程
+                # Agent 思考过程或状态更新
                 text = message.data.decode('utf-8', errors='ignore')
-                self.logger.debug(f"收到 Agent 思考: {text[:50]}...")
-                self.ui.print_agent_thought(text)
+
+                # 尝试解析为 JSON 状态消息
+                try:
+                    import json
+                    status_data = json.loads(text)
+                    status_type = status_data.get("type")
+                    content = status_data.get("content", "")
+
+                    # 处理不同类型的状态
+                    if status_type == "stream_start":
+                        # 开始流式输出
+                        if not self.is_streaming:
+                            self.ui.stop_spinner()
+                            await asyncio.sleep(0.1)  # 等待 spinner 清除
+                            self.ui.start_live_display()
+                            self.is_streaming = True
+                            self.logger.debug("开始流式输出")
+
+                    elif status_type in ["thinking", "tool_call", "generating"]:
+                        # 更新 spinner 状态
+                        if not self.is_streaming:
+                            # 如果 spinner 没有启动，先启动
+                            self.ui.show_spinner(content)
+                        else:
+                            # 更新 spinner 消息
+                            self.ui.update_spinner(content)
+                        self.logger.debug(f"Agent 状态: {status_type} - {content}")
+
+                    else:
+                        # 其他类型的状态，直接更新 spinner
+                        self.ui.update_spinner(content)
+
+                except json.JSONDecodeError:
+                    # 不是 JSON 格式，当作普通思考过程处理
+                    self.logger.debug(f"收到 Agent 思考: {text[:50]}...")
+                    # 更新Spinner状态（不停止，直接更新）
+                    if not self.is_streaming:
+                        self.ui.show_spinner(text)
+                    else:
+                        self.ui.update_spinner(text)
 
             elif message.type == MessageType.DOWNLOAD_OFFER:
                 # 下载提议

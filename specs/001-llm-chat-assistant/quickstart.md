@@ -73,9 +73,12 @@ server:
   port: 9999
   max_clients: 10
   heartbeat_interval: 90
+  storage_dir: "storage"
+  logs_dir: "logs"
 
 llm:
-  model: "glm-4-flash"
+  chat_model: "glm-4-flash"
+  embed_model: "embedding-3-pro"
   temperature: 0.7
   max_tokens: 2000
   timeout: 30

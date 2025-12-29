@@ -13,7 +13,7 @@ from enum import Enum
 from typing import Callable, Dict, Optional, Tuple
 
 from ..protocols.nplt import MessageType, NPLTMessage
-from ..storage.history import ConversationHistory
+from ..storage.history import ConversationHistory, SessionManager
 
 
 class SessionState(Enum):
@@ -59,20 +59,66 @@ class Session:
             message_type: 消息类型
             data: 消息数据
         """
-        # 创建消息
-        message = NPLTMessage(
-            type=message_type,
-            seq=self.send_seq,
-            data=data
-        )
+        try:
+            # 创建消息
+            message = NPLTMessage(
+                type=message_type,
+                seq=self.send_seq,
+                data=data
+            )
 
-        # 编码并发送
-        encoded = message.encode()
-        self.writer.write(encoded)
-        await self.writer.drain()
+            # 编码并发送
+            encoded = message.encode()
+            self.writer.write(encoded)
+            await self.writer.drain()
 
-        # 更新序列号
-        self.send_seq = (self.send_seq + 1) % 65536
+            # 更新序列号
+            self.send_seq = (self.send_seq + 1) % 65536
+        except Exception as e:
+            # 发送失败，通常意味着连接已关闭
+            print(f"[ERROR] [SERVER] 发送消息失败: {e}")
+            self.state = SessionState.ERROR
+            raise
+
+    async def send_stream_start(self):
+        """发送流式输出开始标记"""
+        import json
+        start_msg = json.dumps({"type": "stream_start"}, ensure_ascii=False)
+        await self.send_message(MessageType.AGENT_THOUGHT, start_msg.encode('utf-8'))
+
+    async def send_stream_chunk(self, chunk: str):
+        """发送流式内容片段
+
+        Args:
+            chunk: 文本片段
+        """
+        await self.send_message(MessageType.CHAT_TEXT, chunk.encode('utf-8'))
+
+    async def send_stream_end(self):
+        """发送流式输出结束标记（空消息）"""
+        await self.send_message(MessageType.CHAT_TEXT, b"")
+
+    async def send_status(self, status_type: str, content: str):
+        """发送 Agent 状态更新
+
+        Args:
+            status_type: 状态类型 (thinking, tool_call, generating)
+            content: 状态内容
+        """
+        import json
+        status_msg = json.dumps({
+            "type": status_type,
+            "content": content
+        }, ensure_ascii=False)
+        await self.send_message(MessageType.AGENT_THOUGHT, status_msg.encode('utf-8'))
+
+    async def send_status_json(self, status_json: str):
+        """发送 Agent 状态更新（JSON 格式字符串）
+
+        Args:
+            status_json: JSON 格式的状态消息
+        """
+        await self.send_message(MessageType.AGENT_THOUGHT, status_json.encode('utf-8'))
 
     async def close(self):
         """关闭会话"""
@@ -100,6 +146,9 @@ class NPLTServer:
 
     # 消息处理器
     chat_handler: Optional[Callable] = None
+
+    # 会话管理器（多会话管理）
+    session_manager: Optional[SessionManager] = None
 
     def register_chat_handler(self, handler: Callable):
         """注册聊天消息处理器
@@ -269,24 +318,35 @@ class NPLTServer:
                 if text == "HEARTBEAT":
                     return
 
+                # 忽略空消息（流式输出结束标记）
+                if not text or not text.strip():
+                    return
+
                 print(f"[DEBUG] [SERVER] 收到聊天消息: {text[:50]}...")
 
                 # 调用聊天处理器（如果存在）
                 if self.chat_handler:
                     try:
-                        response = await self.chat_handler(session, text)
+                        # 设置 Agent 的状态回调（用于发送状态更新）
+                        from ..server.agent import ReActAgent
+                        if isinstance(self.chat_handler, ReActAgent):
+                            self.chat_handler.status_callback = lambda msg: session.send_status_json(msg)
 
-                        # 发送回复
-                        await session.send_message(
-                            MessageType.CHAT_TEXT,
-                            response.encode('utf-8')
-                        )
+                        # 使用流式处理
+                        await self.chat_handler(session, text)
+
                     except Exception as e:
                         print(f"[ERROR] [SERVER] 聊天处理器失败: {e}")
-                        await session.send_message(
-                            MessageType.CHAT_TEXT,
-                            f"处理失败: {str(e)}".encode('utf-8')
-                        )
+                        import traceback
+                        print(f"[DEBUG] [SERVER] 错误堆栈:\n{traceback.format_exc()}")
+                        try:
+                            await session.send_message(
+                                MessageType.CHAT_TEXT,
+                                f"处理失败: {str(e)}".encode('utf-8')
+                            )
+                        except:
+                            print(f"[ERROR] [SERVER] 发送错误消息失败，连接可能已关闭")
+                            raise
 
             elif message.type == MessageType.AGENT_THOUGHT:
                 # Agent 思考过程（通常由服务器发送给客户端，不应该收到）
@@ -315,6 +375,22 @@ class NPLTServer:
             elif message.type == MessageType.CLEAR_REQUEST:
                 # 清空会话请求
                 await self._handle_clear_request(session, message)
+
+            elif message.type == MessageType.SESSION_LIST:
+                # 会话列表请求
+                await self._handle_session_list(session, message)
+
+            elif message.type == MessageType.SESSION_SWITCH:
+                # 切换会话请求
+                await self._handle_session_switch(session, message)
+
+            elif message.type == MessageType.SESSION_NEW:
+                # 创建新会话请求
+                await self._handle_session_new(session, message)
+
+            elif message.type == MessageType.SESSION_DELETE:
+                # 删除会话请求
+                await self._handle_session_delete(session, message)
 
             else:
                 print(f"[WARN] [SERVER] 未知消息类型: {message.type}")
@@ -568,6 +644,190 @@ class NPLTServer:
             await session.send_message(
                 MessageType.CHAT_TEXT,
                 f"清空失败: {str(e)}".encode('utf-8')
+            )
+
+    async def _handle_session_list(self, session: Session, message: NPLTMessage):
+        """处理会话列表请求"""
+        try:
+            if not self.session_manager:
+                await session.send_message(
+                    MessageType.CHAT_TEXT,
+                    "会话管理器未初始化".encode('utf-8')
+                )
+                return
+
+            # 获取会话列表
+            session_list = self.session_manager.list_sessions()
+
+            # 格式化会话列表
+            response = "\n\n=== 会话列表 ===\n\n"
+            if not session_list:
+                response += "暂无会话\n"
+            else:
+                for idx, sinfo in enumerate(session_list, 1):
+                    current = " (当前)" if sinfo.is_current else ""
+                    response += f"{idx}. [{sinfo.session_id[:8]}] {sinfo.name}{current}\n"
+                    response += f"   消息数: {sinfo.message_count}\n"
+                    response += f"   最后访问: {sinfo.last_accessed.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+
+            # 发送会话列表
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                response.encode('utf-8')
+            )
+
+            print(f"[INFO] [SERVER] 发送会话列表: {len(session_list)} 个会话")
+
+        except Exception as e:
+            print(f"[ERROR] [SERVER] 处理会话列表请求失败: {e}")
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                f"获取会话列表失败: {str(e)}".encode('utf-8')
+            )
+
+    async def _handle_session_switch(self, session: Session, message: NPLTMessage):
+        """处理切换会话请求"""
+        try:
+            import json
+
+            if not self.session_manager:
+                await session.send_message(
+                    MessageType.CHAT_TEXT,
+                    "会话管理器未初始化".encode('utf-8')
+                )
+                return
+
+            # 解析请求
+            request = json.loads(message.data.decode('utf-8'))
+            target_session_id = request.get('session_id', '')
+
+            if not target_session_id:
+                await session.send_message(
+                    MessageType.CHAT_TEXT,
+                    "会话ID不能为空".encode('utf-8')
+                )
+                return
+
+            print(f"[INFO] [SERVER] 切换会话请求: {target_session_id}")
+
+            # 切换会话
+            if not self.session_manager.switch_session(target_session_id):
+                await session.send_message(
+                    MessageType.CHAT_TEXT,
+                    f"切换失败: 会话不存在或已归档".encode('utf-8')
+                )
+                return
+
+            # 加载新会话的上下文（T092）
+            new_history = ConversationHistory.load(target_session_id)
+            if new_history:
+                session.conversation_history = new_history
+                print(f"[INFO] [SERVER] 已加载会话上下文: {target_session_id[:8]}")
+            else:
+                # 如果加载失败，创建新的历史记录
+                session.conversation_history = ConversationHistory.create_new(target_session_id)
+                print(f"[WARN] [SERVER] 未找到会话历史，创建新的: {target_session_id[:8]}")
+
+            # 发送确认
+            target_session = self.session_manager.sessions.get(target_session_id)
+            session_name = target_session.name if target_session else target_session_id[:8]
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                f"已切换到会话: {session_name}".encode('utf-8')
+            )
+
+            print(f"[INFO] [SERVER] 会话已切换: {target_session_id[:8]}")
+
+        except Exception as e:
+            print(f"[ERROR] [SERVER] 处理切换会话请求失败: {e}")
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                f"切换会话失败: {str(e)}".encode('utf-8')
+            )
+
+    async def _handle_session_new(self, session: Session, message: NPLTMessage):
+        """处理创建新会话请求"""
+        try:
+            if not self.session_manager:
+                await session.send_message(
+                    MessageType.CHAT_TEXT,
+                    "会话管理器未初始化".encode('utf-8')
+                )
+                return
+
+            print(f"[INFO] [SERVER] 创建新会话请求")
+
+            # 创建新会话
+            new_session = self.session_manager.create_session()
+            new_session_id = new_session.session_id
+
+            # 切换到新会话
+            self.session_manager.switch_session(new_session_id)
+
+            # 为客户端连接创建新的对话历史
+            session.conversation_history = ConversationHistory.create_new(new_session_id)
+
+            # 发送确认
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                f"已创建新会话: {new_session_id[:8]}".encode('utf-8')
+            )
+
+            print(f"[INFO] [SERVER] 新会话已创建: {new_session_id[:8]}")
+
+        except Exception as e:
+            print(f"[ERROR] [SERVER] 处理创建新会话请求失败: {e}")
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                f"创建新会话失败: {str(e)}".encode('utf-8')
+            )
+
+    async def _handle_session_delete(self, session: Session, message: NPLTMessage):
+        """处理删除会话请求"""
+        try:
+            import json
+
+            if not self.session_manager:
+                await session.send_message(
+                    MessageType.CHAT_TEXT,
+                    "会话管理器未初始化".encode('utf-8')
+                )
+                return
+
+            # 解析请求
+            request = json.loads(message.data.decode('utf-8'))
+            target_session_id = request.get('session_id', '')
+
+            if not target_session_id:
+                await session.send_message(
+                    MessageType.CHAT_TEXT,
+                    "会话ID不能为空".encode('utf-8')
+                )
+                return
+
+            print(f"[INFO] [SERVER] 删除会话请求: {target_session_id}")
+
+            # 删除会话
+            if not self.session_manager.delete_session(target_session_id):
+                await session.send_message(
+                    MessageType.CHAT_TEXT,
+                    f"删除失败: 会话不存在、是当前会话或其他错误".encode('utf-8')
+                )
+                return
+
+            # 发送确认
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                f"会话已删除: {target_session_id[:8]}".encode('utf-8')
+            )
+
+            print(f"[INFO] [SERVER] 会话已删除: {target_session_id[:8]}")
+
+        except Exception as e:
+            print(f"[ERROR] [SERVER] 处理删除会话请求失败: {e}")
+            await session.send_message(
+                MessageType.CHAT_TEXT,
+                f"删除会话失败: {str(e)}".encode('utf-8')
             )
 
 

@@ -79,6 +79,11 @@ description: "功能实现任务列表模板"
 - [ ] T010 配置错误处理和日志记录基础设施 (日志写入 logs 文件夹)
 - [ ] T011 设置环境配置管理
 - [ ] T012 如涉及 LLM,实现智谱 API key 验证机制 (遵循章程: 测试真实性)
+- [ ] T013 [P] 如涉及文件访问,实施统一的路径白名单验证器 (遵循章程: 安全第一原则)
+- [ ] T014 [P] 如涉及文件访问,配置路径黑名单保护敏感文件 (遵循章程: 安全第一原则)
+- [ ] T015 [P] 如涉及 RAG 功能,实施索引管理器和懒加载策略 (遵循章程: 自动化与按需索引)
+- [ ] T016 [P] 实施多层安全验证机制 (白名单、黑名单、大小限制、内容类型验证) (遵循章程: 多层防御策略)
+- [ ] T017 配置审计日志记录 (文件访问、索引创建、工具调用) (遵循章程: 可审计性与透明性)
 
 ---
 
@@ -86,8 +91,8 @@ description: "功能实现任务列表模板"
 
 **目的**: 确保基础设施阶段完成并通过测试后进行版本提交
 
-- [ ] T013 运行所有基础设施阶段的测试,确保测试通过 (遵循章程: 版本控制与测试纪律)
-- [ ] T014 提交基础设施阶段代码,清晰描述基础工作和测试结果 (遵循章程: 版本控制与测试纪律)
+- [ ] T018 运行所有基础设施阶段的测试,确保测试通过 (遵循章程: 版本控制与测试纪律)
+- [ ] T019 提交基础设施阶段代码,清晰描述基础工作和测试结果 (遵循章程: 版本控制与测试纪律)
 
 **检查点**: 基础就绪 - 现在可以开始并行实施用户故事
 
@@ -103,17 +108,17 @@ description: "功能实现任务列表模板"
 
 **注意: 先编写这些测试, 确保在实施前它们失败**
 
-- [ ] T010 [P] [US1] 在 tests/contract/test_[name].py 中为 [endpoint] 编写合约测试
-- [ ] T011 [P] [US1] 在 tests/integration/test_[name].py 中为 [user journey] 编写集成测试
+- [ ] T020 [P] [US1] 在 tests/contract/test_[name].py 中为 [endpoint] 编写合约测试
+- [ ] T021 [P] [US1] 在 tests/integration/test_[name].py 中为 [user journey] 编写集成测试
 
 ### 用户故事 1 的实施
 
-- [ ] T012 [P] [US1] 在 src/models/[entity1].py 中创建 [Entity1] 模型
-- [ ] T013 [P] [US1] 在 src/models/[entity2].py 中创建 [Entity2] 模型
-- [ ] T014 [US1] 在 src/services/[service].py 中实施 [Service](依赖于 T012、T013)
-- [ ] T015 [US1] 在 src/[location]/[file].py 中实施 [endpoint/feature]
-- [ ] T016 [US1] 添加验证和错误处理
-- [ ] T017 [US1] 为用户故事 1 操作添加日志记录
+- [ ] T022 [P] [US1] 在 src/models/[entity1].py 中创建 [Entity1] 模型
+- [ ] T023 [P] [US1] 在 src/models/[entity2].py 中创建 [Entity2] 模型
+- [ ] T024 [US1] 在 src/services/[service].py 中实施 [Service](依赖于 T022、T023)
+- [ ] T025 [US1] 在 src/[location]/[file].py 中实施 [endpoint/feature]
+- [ ] T026 [US1] 添加验证和错误处理
+- [ ] T027 [US1] 为用户故事 1 操作添加日志记录
 
 ---
 
@@ -121,8 +126,8 @@ description: "功能实现任务列表模板"
 
 **目的**: 确保用户故事 1 完成并通过测试后进行版本提交
 
-- [ ] T018 运行用户故事 1 的所有测试,确保测试通过 (遵循章程: 版本控制与测试纪律)
-- [ ] T019 提交用户故事 1 代码,清晰描述用户故事 1 的功能和测试结果 (遵循章程: 版本控制与测试纪律)
+- [ ] T028 运行用户故事 1 的所有测试,确保测试通过 (遵循章程: 版本控制与测试纪律)
+- [ ] T029 提交用户故事 1 代码,清晰描述用户故事 1 的功能和测试结果 (遵循章程: 版本控制与测试纪律)
 
 **检查点**: 此时, 用户故事 1 应该完全功能化且可独立测试
 
@@ -136,15 +141,15 @@ description: "功能实现任务列表模板"
 
 ### 用户故事 2 的测试(可选 - 仅在要求测试时)⚠️
 
-- [ ] T018 [P] [US2] 在 tests/contract/test_[name].py 中为 [endpoint] 编写合约测试
-- [ ] T019 [P] [US2] 在 tests/integration/test_[name].py 中为 [user journey] 编写集成测试
+- [ ] T030 [P] [US2] 在 tests/contract/test_[name].py 中为 [endpoint] 编写合约测试
+- [ ] T031 [P] [US2] 在 tests/integration/test_[name].py 中为 [user journey] 编写集成测试
 
 ### 用户故事 2 的实施
 
-- [ ] T020 [P] [US2] 在 src/models/[entity].py 中创建 [Entity] 模型
-- [ ] T021 [US2] 在 src/services/[service].py 中实施 [Service]
-- [ ] T022 [US2] 在 src/[location]/[file].py 中实施 [endpoint/feature]
-- [ ] T023 [US2] 与用户故事 1 组件集成(如需要)
+- [ ] T032 [P] [US2] 在 src/models/[entity].py 中创建 [Entity] 模型
+- [ ] T033 [US2] 在 src/services/[service].py 中实施 [Service]
+- [ ] T034 [US2] 在 src/[location]/[file].py 中实施 [endpoint/feature]
+- [ ] T035 [US2] 与用户故事 1 组件集成(如需要)
 
 ---
 
@@ -152,8 +157,8 @@ description: "功能实现任务列表模板"
 
 **目的**: 确保用户故事 2 完成并通过测试后进行版本提交
 
-- [ ] T024 运行用户故事 2 的所有测试,确保测试通过 (遵循章程: 版本控制与测试纪律)
-- [ ] T025 提交用户故事 2 代码,清晰描述用户故事 2 的功能和测试结果 (遵循章程: 版本控制与测试纪律)
+- [ ] T036 运行用户故事 2 的所有测试,确保测试通过 (遵循章程: 版本控制与测试纪律)
+- [ ] T037 提交用户故事 2 代码,清晰描述用户故事 2 的功能和测试结果 (遵循章程: 版本控制与测试纪律)
 
 **检查点**: 此时, 用户故事 1 和 2 都应该独立运行
 
@@ -167,14 +172,14 @@ description: "功能实现任务列表模板"
 
 ### 用户故事 3 的测试(可选 - 仅在要求测试时)⚠️
 
-- [ ] T024 [P] [US3] 在 tests/contract/test_[name].py 中为 [endpoint] 编写合约测试
-- [ ] T025 [P] [US3] 在 tests/integration/test_[name].py 中为 [user journey] 编写集成测试
+- [ ] T040 [P] [US3] 在 tests/contract/test_[name].py 中为 [endpoint] 编写合约测试
+- [ ] T041 [P] [US3] 在 tests/integration/test_[name].py 中为 [user journey] 编写集成测试
 
 ### 用户故事 3 的实施
 
-- [ ] T026 [P] [US3] 在 src/models/[entity].py 中创建 [Entity] 模型
-- [ ] T027 [US3] 在 src/services/[service].py 中实施 [Service]
-- [ ] T028 [US3] 在 src/[location]/[file].py 中实施 [endpoint/feature]
+- [ ] T042 [P] [US3] 在 src/models/[entity].py 中创建 [Entity] 模型
+- [ ] T043 [US3] 在 src/services/[service].py 中实施 [Service]
+- [ ] T044 [US3] 在 src/[location]/[file].py 中实施 [endpoint/feature]
 
 ---
 
@@ -182,8 +187,8 @@ description: "功能实现任务列表模板"
 
 **目的**: 确保用户故事 3 完成并通过测试后进行版本提交
 
-- [ ] T029 运行用户故事 3 的所有测试,确保测试通过 (遵循章程: 版本控制与测试纪律)
-- [ ] T030 提交用户故事 3 代码,清晰描述用户故事 3 的功能和测试结果 (遵循章程: 版本控制与测试纪律)
+- [ ] T045 运行用户故事 3 的所有测试,确保测试通过 (遵循章程: 版本控制与测试纪律)
+- [ ] T046 提交用户故事 3 代码,清晰描述用户故事 3 的功能和测试结果 (遵循章程: 版本控制与测试纪律)
 
 **检查点**: 所有用户故事现在应该独立功能化
 

@@ -4,11 +4,13 @@ NPLT 协议实现
 NPLT (Network Protocol for LLM Transport) 是一个轻量级的二进制应用层协议，
 用于在客户端和服务器之间传输实时聊天消息、Agent 思考过程和文件传输提议。
 
-协议格式：
+协议格式（v2）：
 +--------+--------+--------+----------+
 | Type   | Seq    | Len    | Data     |
-| 1 Byte | 2 Bytes| 1 Byte | <=255 Bytes|
+| 1 Byte | 2 Bytes| 2 Bytes| <=64KB   |
 +--------+--------+--------+----------+
+
+注：v1 协议使用 1 字节长度字段（最大 255 字节），v2 扩展为 2 字节（最大 65535 字节）
 """
 
 import struct
@@ -27,6 +29,10 @@ class MessageType(IntEnum):
     MODEL_SWITCH = 0x0F       # 模型切换请求
     HISTORY_REQUEST = 0x10    # 历史记录请求
     CLEAR_REQUEST = 0x11      # 清空会话请求
+    SESSION_LIST = 0x14       # 会话列表请求
+    SESSION_SWITCH = 0x15     # 切换会话
+    SESSION_NEW = 0x16        # 创建新会话
+    SESSION_DELETE = 0x17     # 删除会话
 
 
 @dataclass
@@ -36,8 +42,8 @@ class NPLTMessage:
     seq: int
     data: bytes
 
-    MAX_DATA_LENGTH = 255
-    HEADER_FORMAT = ">BHB"  # uint8, uint16, uint8 (大端序)
+    MAX_DATA_LENGTH = 65535  # uint16 最大值
+    HEADER_FORMAT = ">BHH"  # uint8, uint16, uint16 (大端序)
     HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
     def encode(self) -> bytes:

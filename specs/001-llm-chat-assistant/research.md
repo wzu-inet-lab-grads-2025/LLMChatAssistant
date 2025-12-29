@@ -1,10 +1,15 @@
 # 研究文档: 智能网络运维助手
 
-**功能**: 001-llm-chat-assistant | **日期**: 2025-12-28
+**功能**: 001-llm-chat-assistant | **日期**: 2025-12-29 | **版本**: 1.1
 
 ## 概述
 
 本文档记录智能网络运维助手的技术选择、最佳实践和设计决策研究。
+
+## 更新日志
+
+- **v1.1** (2025-12-29): 添加多会话管理架构设计、模型切换修复记录、FAISS 选择更正
+- **v1.0** (2025-12-28): 初始版本
 
 ## 技术选择研究
 
@@ -171,7 +176,103 @@ ZHIPU_API_KEY=your_api_key_here
 - 客户端使用独立的配置文件（如 config.client.yaml）
 - 仅包含连接服务器所需的信息（host、port）
 
-### 7. UDP 可靠传输: RDT 协议
+### 7. 多会话管理架构设计
+
+**决策**: 实现单用户多会话管理系统，支持会话创建、切换、自动命名和归档
+
+**核心需求**:
+- 单用户场景下支持多个命名会话
+- 通过命令管理会话：/sessions、/switch、/new、/delete
+- AI 自动生成会话名称（分析前几轮对话）
+- 会话切换时加载压缩上下文
+- 30 天未访问的会话自动归档
+
+**架构设计**:
+
+```python
+class SessionManager:
+    """会话管理器"""
+
+    sessions: Dict[str, ConversationHistory]  # 活跃会话
+    current_session: str                      # 当前会话 ID
+    archive_dir: str = "storage/history/archive"
+
+    def create_session(self) -> str:
+        """创建新会话"""
+        pass
+
+    def switch_session(self, session_id: str):
+        """切换会话"""
+        pass
+
+    def list_sessions(self) -> List[SessionInfo]:
+        """列出所有会话"""
+        pass
+
+    def delete_session(self, session_id: str):
+        """删除会话"""
+        pass
+
+    def archive_old_sessions(self, days: int = 30):
+        """归档旧会话"""
+        pass
+
+    def auto_name_session(self, session_id: str):
+        """AI 自动命名会话"""
+        pass
+```
+
+**会话命名策略**:
+- 默认名称：会话创建日期时间（如 "2025-12-29 10:30"）
+- AI 命名：在第 3 轮对话后，使用 LLM 分析对话主题生成名称
+- 命令重命名：支持用户手动重命名（未来扩展）
+
+**上下文管理**:
+- 切换会话时完全隔离上下文
+- 加载会话时仅使用压缩后的上下文摘要
+- 标记上下文窗口位置，避免重复加载
+
+**存储结构**:
+```
+storage/
+├── history/
+│   ├── session_20251228_abc123.json  # 活跃会话
+│   └── session_20251229_def456.json
+└── archive/
+    ├── 2024-12/                       # 按月归档
+    │   ├── session_20241101_xxx.json
+    │   └── session_20241115_yyy.json
+    └── 2025-01/
+```
+
+**理由**:
+- 符合单用户多场景使用习惯（类似 ChatGPT 侧边栏）
+- AI 自动命名提升用户体验
+- 自动归档避免数据膨胀
+- 命令职责清晰，易于扩展
+
+**替代方案考虑**:
+- **单会话无限历史**: 简单但上下文混乱，不便于场景切换
+- **手动命名所有会话**: 灵活但增加用户负担
+- **永久保存所有会话**: 占用存储，检索困难
+
+### 8. 向量存储: FAISS
+
+**决策**: 使用 FAISS (Facebook AI Similarity Search) 进行向量存储和检索
+
+**理由**:
+- 高性能向量检索，支持大规模数据
+- 提供多种索引类型（IndexFlatIP、IndexIVFFlat 等）
+- 内存和磁盘索引支持
+- 与 NumPy 无缝集成
+- 成熟稳定，广泛使用
+
+**替代方案考虑**:
+- **NumPy + 文件系统**: 简单但检索性能差，O(n) 线性搜索
+- **ChromaDB**: 功能完善但过度设计，需要额外依赖
+- **SQLite + sqlite-vss**: 轻量级，但向量检索性能不如 FAISS
+
+### 9. UDP 可靠传输: RDT 协议
 
 **决策**: 实现基于滑动窗口的 RDT 3.0 协议
 
@@ -403,6 +504,49 @@ def zhipu_api_key():
 - TLS/SSL 加密（TCP）
 - API 认证（Token）
 - IP 白名单
+
+## 问题修复记录
+
+### 模型切换功能缺陷（已修复）
+
+**问题描述**: 服务器的 `model_switch_callback` 从未设置，导致模型切换请求失败。
+
+**影响范围**: 用户执行 `/model` 命令时无法真正切换 LLM 模型，服务器始终使用默认模型。
+
+**根本原因**:
+1. `src/server/main.py` 中创建了 NPLTServer 实例，但从未注册 `model_switch_callback`
+2. `src/server/nplt_server.py` 中的 `handle_model_switch` 方法检查 `self.model_switch_callback is None`，直接返回失败
+3. 客户端发送 MODEL_SWITCH 请求后收到错误响应
+
+**修复方案**:
+1. **在 `src/server/main.py` 中添加回调注册**（第 118-119 行）:
+```python
+# 注册模型切换回调
+async def model_switch_callback(new_model: str) -> bool:
+    logger.info(f"切换模型: {current_model} -> {new_model}")
+    nonlocal current_model
+    current_model = new_model
+    return True
+
+server.model_switch_callback = model_switch_callback
+```
+
+2. **在 `src/server/nplt_server.py` 中增强验证逻辑**（第 459-515 行）:
+- 验证模型名称在白名单中
+- 调用回调前检查有效性
+- 返回详细的错误信息
+
+3. **在 `src/client/main.py` 中更新错误处理**（第 233-277 行）:
+- 解析服务器的错误响应
+- 显示友好的错误提示
+
+**验证方法**:
+- 添加 4 个集成测试用例（test_model_switch_*）验证切换功能
+- 测试场景：有效模型切换、无效模型拒绝、切换后使用新模型
+
+**提交记录**: commit 36477ad
+
+**状态**: ✅ 已修复并全部测试通过
 
 ## 未解决问题与后续研究
 

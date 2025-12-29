@@ -44,7 +44,6 @@ class ClientMain:
 
         # 显示欢迎画面
         self.ui.show_welcome()
-        self.ui.print_separator()
 
         # 创建客户端
         self.client = NPLTClient(
@@ -76,15 +75,16 @@ class ClientMain:
         # 启动消息接收循环
         asyncio.create_task(self.client.start_message_loop())
 
-        # 显示帮助信息
-        self.ui.print_info("输入您的消息，输入 /quit 退出，/help 查看帮助")
-        self.ui.print_separator()
+        # 等待服务器的欢迎消息（第一个消息）
+        # 这样可以确保欢迎消息显示后再显示"User>"提示符
+        await self.client.response_event.wait()
+        self.client.response_event.clear()
 
         # 主循环
         while self.running and self.client.is_connected():
             try:
                 # 获取用户输入
-                user_input = await asyncio.to_thread(self.ui.input, "你: ")
+                user_input = await asyncio.to_thread(self.ui.input, "User> ")
 
                 if not user_input:
                     continue
@@ -96,9 +96,20 @@ class ClientMain:
                 if await self._parse_command(user_input):
                     continue
 
+                # 显示用户消息（用Panel格式）
+                self.ui.print_message("user", user_input)
+
                 # 发送聊天消息
                 await self.client.send_chat(user_input)
-                self.logger.debug("消息已发送")
+
+                # 显示Spinner
+                self.ui.show_spinner("[Agent] 正在分析意图")
+
+                self.logger.debug("消息已发送，等待响应...")
+
+                # 等待响应完成（通过Event通知）
+                await self.client.response_event.wait()
+                self.client.response_event.clear()
 
             except KeyboardInterrupt:
                 self.logger.info("收到中断信号")
@@ -172,6 +183,26 @@ class ClientMain:
         # /clear - 清空历史
         elif command == "/clear":
             await self._command_clear()
+            return True
+
+        # /sessions - 会话列表
+        elif command == "/sessions":
+            await self._command_sessions()
+            return True
+
+        # /switch <session_id> - 切换会话
+        elif command == "/switch":
+            await self._command_switch(args)
+            return True
+
+        # /new - 创建新会话
+        elif command == "/new":
+            await self._command_new()
+            return True
+
+        # /delete <session_id> - 删除会话
+        elif command == "/delete":
+            await self._command_delete(args)
             return True
 
         # 未知命令
@@ -308,6 +339,92 @@ class ClientMain:
         else:
             self.logger.error("发送清空请求失败")
             self.ui.print_error("清空对话历史失败")
+
+    async def _command_sessions(self):
+        """处理 /sessions 命令"""
+        from ..protocols.nplt import MessageType
+
+        # 发送会话列表请求到服务器
+        success = await self.client.send_message(
+            MessageType.SESSION_LIST,
+            b""
+        )
+
+        if not success:
+            self.logger.error("发送会话列表请求失败")
+            self.ui.print_error("获取会话列表失败")
+
+    async def _command_switch(self, args: list):
+        """处理 /switch 命令"""
+        if not args:
+            self.ui.print_error("用法: /switch <会话ID>")
+            return
+
+        session_id = args[0]
+        self.logger.info(f"切换会话请求: {session_id}")
+
+        from ..protocols.nplt import MessageType
+        import json
+
+        # 发送切换会话请求到服务器
+        switch_data = json.dumps({"session_id": session_id})
+        success = await self.client.send_message(
+            MessageType.SESSION_SWITCH,
+            switch_data.encode('utf-8')
+        )
+
+        if not success:
+            self.logger.error(f"发送切换会话请求失败: {session_id}")
+            self.ui.print_error("切换会话失败")
+
+    async def _command_new(self):
+        """处理 /new 命令"""
+        self.logger.info("创建新会话请求")
+
+        from ..protocols.nplt import MessageType
+
+        # 发送创建新会话请求到服务器
+        success = await self.client.send_message(
+            MessageType.SESSION_NEW,
+            b""
+        )
+
+        if not success:
+            self.logger.error("发送创建新会话请求失败")
+            self.ui.print_error("创建新会话失败")
+
+    async def _command_delete(self, args: list):
+        """处理 /delete 命令"""
+        if not args:
+            self.ui.print_error("用法: /delete <会话ID>")
+            return
+
+        session_id = args[0]
+        self.logger.info(f"删除会话请求: {session_id}")
+
+        # 二次确认
+        confirm = await asyncio.to_thread(
+            self.ui.input,
+            f"确认删除会话 {session_id}? (y/n): "
+        )
+
+        if confirm.lower() != 'y':
+            self.ui.print_warning("删除已取消")
+            return
+
+        from ..protocols.nplt import MessageType
+        import json
+
+        # 发送删除会话请求到服务器
+        delete_data = json.dumps({"session_id": session_id})
+        success = await self.client.send_message(
+            MessageType.SESSION_DELETE,
+            delete_data.encode('utf-8')
+        )
+
+        if not success:
+            self.logger.error(f"发送删除会话请求失败: {session_id}")
+            self.ui.print_error("删除会话失败")
 
     async def _handle_download_offer(self, offer_data: dict):
         """处理下载提议

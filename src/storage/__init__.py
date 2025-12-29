@@ -1,19 +1,18 @@
 """
 存储模块
-
-提供向量存储、对话历史和文件管理功能。
 """
 
-from .vector_store import VectorIndex, VectorStore, SearchResult
-from .history import ConversationHistory, ChatMessage, ToolCall
+from .vector_store import VectorStore, VectorIndex, SearchResult
+from .history import ConversationHistory, SessionManager
 from .files import UploadedFile
+from .index_manager import IndexManager
 
 __all__ = [
-    'VectorIndex',
     'VectorStore',
+    'VectorIndex',
     'SearchResult',
     'ConversationHistory',
-    'ChatMessage',
-    'ToolCall',
+    'SessionManager',
     'UploadedFile',
+    'IndexManager',
 ]

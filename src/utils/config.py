@@ -19,7 +19,7 @@ class LLMConfig:
     chat_model: str = "glm-4-flash"
     embed_model: str = "embedding-3-pro"
     temperature: float = 0.7
-    max_tokens: int = 2000
+    max_tokens: int = 128000
     timeout: int = 30
 
     def validate(self) -> bool:
@@ -44,10 +44,68 @@ class ServerConfig:
 
 
 @dataclass
+class StreamingConfig:
+    """流式输出配置"""
+    enabled: bool = True  # 是否启用流式输出
+    chunk_size: int = 20  # 每次发送的字符数（建议 10-50）
+    delay: float = 0.05  # 每次发送的延迟秒数（建议 0.03-0.1）
+
+    def validate(self) -> bool:
+        """验证配置有效性"""
+        return (
+            1 <= self.chunk_size <= 100 and
+            0.01 <= self.delay <= 0.5
+        )
+
+
+@dataclass
+class FileAccessConfig:
+    """文件访问安全配置"""
+    # 允许访问的路径白名单
+    allowed_paths: list[str] = field(default_factory=lambda: [
+        "./workspace",
+        "./storage/uploads",
+        "/var/log/*.log",
+        "/tmp/*.txt"
+    ])
+
+    # 禁止访问的路径模式
+    forbidden_patterns: list[str] = field(default_factory=lambda: [
+        "*/.ssh/*",
+        "*/.env",
+        "*/.git/config",
+        "/etc/passwd",
+        "/etc/shadow",
+        "/etc/*secret*"
+    ])
+
+    # RAG 索引配置
+    auto_index: bool = True
+    max_file_size: int = 10485760  # 10MB
+    chunk_size: int = 500
+    chunk_overlap: int = 50
+
+    # 命令执行限制
+    max_output_size: int = 102400  # 100KB
+    max_files_per_glob: int = 100
+
+    def validate(self) -> bool:
+        """验证配置有效性"""
+        return (
+            self.max_file_size > 0 and
+            self.max_output_size > 0 and
+            self.chunk_size > 0 and
+            0 <= self.chunk_overlap < self.chunk_size
+        )
+
+
+@dataclass
 class AppConfig:
     """应用配置（从 config.yaml 和 .env 加载）"""
     server: ServerConfig
     llm: LLMConfig
+    streaming: StreamingConfig
+    file_access: FileAccessConfig
 
     # 配置文件路径
     config_file: str = "config.yaml"  # 项目根目录
@@ -93,9 +151,18 @@ class AppConfig:
             **llm_config_data
         )
 
+        # 5. 流式输出配置
+        streaming_config = StreamingConfig(**config_data.get('streaming', {}))
+
+        # 6. 文件访问安全配置
+        file_access_data = config_data.get('file_access', {})
+        file_access_config = FileAccessConfig(**file_access_data)
+
         return cls(
             server=server_config,
             llm=llm_config,
+            streaming=streaming_config,
+            file_access=file_access_config,
             config_file=config_file,
             env_file=env_file
         )
@@ -105,7 +172,9 @@ class AppConfig:
         return (
             1024 <= self.server.port <= 65535 and
             self.server.max_clients > 0 and
-            self.llm.validate()
+            self.llm.validate() and
+            self.streaming.validate() and
+            self.file_access.validate()
         )
 
 

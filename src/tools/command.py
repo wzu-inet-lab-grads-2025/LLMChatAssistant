@@ -1,13 +1,13 @@
 """
 命令执行工具模块
 
-提供安全的命令执行功能，仅支持白名单命令。
-遵循章程：安全加固，命令黑名单字符过滤
+提供安全的命令执行功能，仅支持白名单命令和路径白名单。
+遵循章程：安全加固，命令黑名单字符过滤 + 路径白名单
 """
 
 import subprocess
-from dataclasses import dataclass
-from typing import List
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 from .base import Tool, ToolExecutionResult
 
@@ -29,14 +29,19 @@ WHITELIST_COMMANDS = [
 # 黑名单字符（用于参数验证）
 BLACKLIST_CHARS = [';', '&', '|', '>', '<', '`', '$', '(', ')', '\n', '\r']
 
+# 需要路径验证的命令
+PATH_VALIDATION_COMMANDS = ['cat', 'head', 'tail', 'grep', 'ls']
+
 
 @dataclass
 class CommandTool(Tool):
     """命令执行工具"""
 
     name: str = "command_executor"
-    description: str = "执行安全的系统命令（仅白名单命令）"
+    description: str = "执行安全的系统命令（仅白名单命令和路径白名单）"
     timeout: int = 5
+    path_validator: Optional[object] = field(default=None)
+    max_output_size: int = 102400  # 100KB
 
     def validate_args(self, command: str, args: List[str] = None) -> tuple[bool, str]:
         """验证命令和参数
@@ -48,16 +53,29 @@ class CommandTool(Tool):
         Returns:
             (是否有效, 错误消息)
         """
-        # 检查命令是否在白名单中
+        # 1. 检查命令是否在白名单中
         if command not in WHITELIST_COMMANDS:
             return False, f"命令不在白名单中: {command}"
 
-        # 检查参数中是否包含黑名单字符
+        # 2. 检查参数中是否包含黑名单字符
         if args:
             for arg in args:
                 for char in BLACKLIST_CHARS:
                     if char in arg:
                         return False, f"参数包含非法字符 '{char}': {arg}"
+
+        # 3. 路径白名单验证（针对需要路径验证的命令）
+        if command in PATH_VALIDATION_COMMANDS and self.path_validator:
+            if args:
+                for arg in args:
+                    # 跳过选项参数（以 - 开头）
+                    if arg.startswith('-'):
+                        continue
+
+                    # 验证路径
+                    allowed, msg = self.path_validator.is_allowed(arg)
+                    if not allowed:
+                        return False, msg
 
         return True, ""
 
@@ -100,6 +118,10 @@ class CommandTool(Tool):
             output = result.stdout
             if result.stderr:
                 output += f"\n[错误输出]\n{result.stderr}"
+
+            # 限制输出大小
+            if len(output) > self.max_output_size:
+                output = output[:self.max_output_size] + f"\n... (输出已截断，共 {len(result.stdout)} 字节)"
 
             return ToolExecutionResult(
                 success=result.returncode == 0,

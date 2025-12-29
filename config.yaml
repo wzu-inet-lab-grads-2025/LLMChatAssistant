@@ -13,8 +13,14 @@ llm:
   chat_model: "glm-4-flash"
   embed_model: "embedding-3-pro"
   temperature: 0.7
-  max_tokens: 2000
-  timeout: 30
+  max_tokens: 128000
+  timeout: 300
+
+# 流式输出配置
+streaming:
+  enabled: true
+  chunk_size: 20  # 每次发送的字符数（建议 10-50）
+  delay: 0.05  # 每次发送的延迟秒数（建议 0.03-0.1，即 30-100ms）
 
 storage:
   storage_dir: "storage"
@@ -22,3 +28,33 @@ storage:
 
 logging:
   level: "INFO"
+
+# 文件访问安全配置
+file_access:
+  # 允许访问的目录白名单
+  allowed_paths:
+    - "./workspace"           # 工作区
+    - "./storage/uploads"     # 上传文件目录
+    - "/var/log/*.log"        # 系统日志（仅 .log 文件）
+    - "/tmp/*.txt"            # 临时文本文件
+
+  # 禁止访问的路径模式（黑名单）
+  forbidden_patterns:
+    - "*/.ssh/*"              # SSH 密钥
+    - "*/.env"                # 环境变量文件
+    - "*/.git/config"         # Git 配置
+    - "/etc/passwd"           # 系统密码文件
+    - "/etc/shadow"           # 系统阴影文件
+    - "/etc/*secret*"         # 其他密钥文件
+
+  # RAG 索引配置
+  indexing:
+    auto_index: true          # 自动索引白名单中的文件
+    max_file_size: 10485760   # 最大索引文件大小 (10MB)
+    chunk_size: 500           # 文本分块大小
+    chunk_overlap: 50         # 分块重叠大小
+
+  # 命令执行限制
+  command_limits:
+    max_output_size: 102400   # 命令输出最大 100KB
+    max_files_per_glob: 100   # glob 匹配最大文件数
