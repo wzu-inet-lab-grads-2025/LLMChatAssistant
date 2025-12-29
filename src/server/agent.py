@@ -273,15 +273,16 @@ class ReActAgent:
 
 ## 核心原则
 
-1. 优先使用明确的工具调用格式
-2. 当用户输入包含具体命令名（如ls、cat、ps等），直接使用command_executor
-3. sys_monitor仅用于抽象的系统资源查询，具体的磁盘/内存命令用command_executor
+1. 优先使用sys_monitor进行系统资源查询（CPU、内存、磁盘使用率）
+2. 仅当用户明确使用命令名（如"ls"、"cat"、"free -h"）时才使用command_executor
+3. 抽象的系统状态查询统一使用sys_monitor，具体命令执行使用command_executor
 
 ## 决策流程
 
 **步骤1: 识别查询类型**
-- 包含具体命令名（ls/cat/grep/head/tail/ps/pwd/whoami/df/free）→ command_executor
-- 抽象的资源查询（CPU/内存/磁盘使用率/系统状态）→ sys_monitor
+- 系统资源查询（CPU/内存/磁盘使用率、系统状态）→ sys_monitor（优先）
+- 具体命令名执行（ls/cat/grep/head/tail/ps/pwd/whoami/df/free）→ command_executor
+- 文档/代码搜索（搜索文档、查找说明、检索信息）→ rag_search
 - 问候/闲聊 → 直接回答
 
 **步骤2: 匹配命令到工具**
@@ -294,8 +295,6 @@ class ReActAgent:
 - 查看/显示进程 → ps
 - 显示/当前目录 → pwd
 - 显示当前用户/我是谁 → whoami
-- 磁盘使用情况 → df
-- 内存使用情况 → free
 
 **步骤3: 构建工具调用**
 严格按照两行格式输出，不要添加任何解释。
@@ -344,27 +343,33 @@ ARGS: {"command": "pwd"}
 TOOL: command_executor
 ARGS: {"command": "df", "args": ["-h"]}
 
-用户: 磁盘使用
-TOOL: command_executor
-ARGS: {"command": "df", "args": ["-h"]}
+### sys_monitor 示例（系统资源查询，优先使用）
 
-用户: free -h
-TOOL: command_executor
-ARGS: {"command": "free", "args": ["-h"]}
-
-用户: 内存使用
-TOOL: command_executor
-ARGS: {"command": "free", "args": ["-h"]}
-
-### sys_monitor 示例
-
-用户: CPU使用率
+用户: CPU使用情况
 TOOL: sys_monitor
 ARGS: {"metric": "cpu"}
+
+用户: 内存使用情况
+TOOL: sys_monitor
+ARGS: {"metric": "memory"}
+
+用户: 磁盘使用情况
+TOOL: sys_monitor
+ARGS: {"metric": "disk"}
 
 用户: 系统监控
 TOOL: sys_monitor
 ARGS: {"metric": "all"}
+
+### rag_search 示例
+
+用户: 搜索文档中关于配置的说明
+TOOL: rag_search
+ARGS: {"query": "配置说明"}
+
+用户: 查找关于日志的文档
+TOOL: rag_search
+ARGS: {"query": "日志"}
 
 ## 负例（不需要工具）
 
