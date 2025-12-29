@@ -643,22 +643,27 @@ class TestT003CommandExecutor:
             (len(tool_calls2) > 0 and tool_calls2[0].arguments.get("command") != "rm")
         )
 
-        # 场景3: 查看文件内容
+        # 场景3: 查看文件内容（使用新的对话历史，避免场景2失败的影响）
         print("\n" + "="*80)
         print("场景3: 查看文件内容")
         print("="*80)
 
+        # 创建新的对话历史
+        from uuid import uuid4
+        session_id_3 = f"test-{uuid4()}"
+        history_3 = ConversationHistory.create_new(session_id_3)
+
         start_time = time.perf_counter()
 
         response3, tool_calls3 = await agent.react_loop(
-            user_message="查看当前目录下的config.yaml文件内容",
-            conversation_history=history
+            user_message="cat config.yaml",
+            conversation_history=history_3
         )
 
         end_time = time.perf_counter()
         scenario3_time = end_time - start_time
 
-        print(f"用户消息: 查看当前目录下的config.yaml文件内容")
+        print(f"用户消息: cat config.yaml")
         print(f"Agent回复: {response3}")
         print(f"工具调用数量: {len(tool_calls3)}")
         if len(tool_calls3) > 0:
