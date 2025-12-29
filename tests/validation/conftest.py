@@ -84,7 +84,7 @@ def fresh_history():
         history_file.unlink()
 
 @pytest.fixture(autouse=True)
-async def clean_test_environment():
+def clean_test_environment():
     """每个测试前后的环境清理（自动使用）"""
     # 测试前：清理临时文件
     test_storage = Path("storage/test-*")
