@@ -257,7 +257,261 @@ class TestT001BasicConversation:
         print("\n✅ T001基础对话功能验证测试全部通过！")
 
 
-# TODO: 在阶段4实现T002系统监控工具验证测试
+# ============================================================================
+# T002: 系统监控工具验证 (用户故事2 - P1)
+# ============================================================================
+
+@pytest.mark.skipif(
+    not os.getenv("ZHIPU_API_KEY"),
+    reason="需要 ZHIPU_API_KEY 环境变量"
+)
+@pytest.mark.asyncio
+class TestT002SystemMonitor:
+    """T002: 系统监控工具验证"""
+
+    async def test_t002_system_monitor(self, auto_confirm):
+        """
+        T002: 系统监控工具验证
+
+        验证Agent正确调用sys_monitor工具，获取CPU、内存、磁盘使用情况。
+
+        测试场景：
+        1. 查看CPU使用率：用户询问"CPU使用情况"，Agent调用sys_monitor工具，参数为{"metric": "cpu"}
+        2. 系统状态查询：用户询问"系统状态如何？"，Agent调用sys_monitor工具，参数为{"metric": "all"}
+        3. 内存使用情况：用户询问"内存使用情况"，Agent调用sys_monitor工具，参数为{"metric": "memory"}
+
+        成功标准：
+        - SC-003: 工具执行时间 < 5.0s
+        - SC-004: 工具调用准确率 ≥ 90%
+        - SC-009: 错误处理场景优雅处理率 100%
+        """
+        from src.server.agent import ReActAgent
+        from src.llm.zhipu import ZhipuProvider
+        from src.storage.history import ConversationHistory
+        from uuid import uuid4
+
+        # 定义测试用例
+        test_case = TestCase(
+            id="T002",
+            name="系统监控工具验证",
+            priority="P1",
+            description="验证Agent正确调用sys_monitor工具，获取系统资源使用情况",
+            user_story="用户需要验证Agent正确调用系统监控工具（sys_monitor），获取CPU、内存、磁盘使用情况",
+            acceptance_scenarios=[
+                AcceptanceScenario(
+                    given="Agent已初始化并配置了sys_monitor工具",
+                    when="用户询问'CPU使用情况'",
+                    then="Agent应该调用sys_monitor工具，参数为{\"metric\": \"cpu\"}，并返回CPU使用情况"
+                ),
+                AcceptanceScenario(
+                    given="Agent已配置sys_monitor工具",
+                    when="用户询问'系统状态如何？'",
+                    then="Agent应该调用sys_monitor工具获取所有指标（metric: \"all\"），并返回完整的系统状态信息"
+                ),
+                AcceptanceScenario(
+                    given="Agent已配置sys_monitor工具",
+                    when="用户询问'内存使用情况'",
+                    then="Agent应该正确调用工具并返回内存使用率、可用内存等信息"
+                ),
+            ]
+        )
+
+        # 创建Agent和对话历史（Agent会自动包含sys_monitor工具）
+        llm_provider = ZhipuProvider(api_key=os.getenv("ZHIPU_API_KEY"))
+        agent = ReActAgent(llm_provider=llm_provider)
+        session_id = f"test-{uuid4()}"
+        history = ConversationHistory.create_new(session_id)
+
+        # 场景1: 查看CPU使用率
+        print("\n" + "="*80)
+        print("场景1: 查看CPU使用率")
+        print("="*80)
+
+        start_time = time.perf_counter()
+
+        response1, tool_calls1 = await agent.react_loop(
+            user_message="CPU使用情况",
+            conversation_history=history
+        )
+
+        end_time = time.perf_counter()
+        scenario1_time = end_time - start_time
+
+        print(f"用户消息: CPU使用情况")
+        print(f"Agent回复: {response1}")
+        print(f"工具调用数量: {len(tool_calls1)}")
+        if len(tool_calls1) > 0:
+            print(f"工具名称: {tool_calls1[0].tool_name}")
+            print(f"工具参数: {tool_calls1[0].arguments}")
+            print(f"工具状态: {tool_calls1[0].status}")
+            print(f"响应时间: {scenario1_time:.2f}s")
+
+        # 验证场景1：调用了sys_monitor工具，参数为cpu
+        scenario1_passed = (
+            len(tool_calls1) > 0 and
+            tool_calls1[0].tool_name == "sys_monitor" and
+            tool_calls1[0].arguments.get("metric") == "cpu" and
+            tool_calls1[0].status == "success"
+        )
+
+        # 场景2: 系统状态查询
+        print("\n" + "="*80)
+        print("场景2: 系统状态查询")
+        print("="*80)
+
+        start_time = time.perf_counter()
+
+        response2, tool_calls2 = await agent.react_loop(
+            user_message="系统状态如何？",
+            conversation_history=history
+        )
+
+        end_time = time.perf_counter()
+        scenario2_time = end_time - start_time
+
+        print(f"用户消息: 系统状态如何？")
+        print(f"Agent回复: {response2}")
+        print(f"工具调用数量: {len(tool_calls2)}")
+        if len(tool_calls2) > 0:
+            print(f"工具名称: {tool_calls2[0].tool_name}")
+            print(f"工具参数: {tool_calls2[0].arguments}")
+            print(f"工具状态: {tool_calls2[0].status}")
+            print(f"响应时间: {scenario2_time:.2f}s")
+
+        # 验证场景2：调用了sys_monitor工具，参数为all
+        scenario2_passed = (
+            len(tool_calls2) > 0 and
+            tool_calls2[0].tool_name == "sys_monitor" and
+            tool_calls2[0].arguments.get("metric") == "all" and
+            tool_calls2[0].status == "success"
+        )
+
+        # 场景3: 内存使用情况
+        print("\n" + "="*80)
+        print("场景3: 内存使用情况")
+        print("="*80)
+
+        start_time = time.perf_counter()
+
+        response3, tool_calls3 = await agent.react_loop(
+            user_message="内存使用情况",
+            conversation_history=history
+        )
+
+        end_time = time.perf_counter()
+        scenario3_time = end_time - start_time
+
+        print(f"用户消息: 内存使用情况")
+        print(f"Agent回复: {response3}")
+        print(f"工具调用数量: {len(tool_calls3)}")
+        if len(tool_calls3) > 0:
+            print(f"工具名称: {tool_calls3[0].tool_name}")
+            print(f"工具参数: {tool_calls3[0].arguments}")
+            print(f"工具状态: {tool_calls3[0].status}")
+            print(f"响应时间: {scenario3_time:.2f}s")
+
+        # 验证场景3：调用了sys_monitor工具，参数为memory
+        scenario3_passed = (
+            len(tool_calls3) > 0 and
+            tool_calls3[0].tool_name == "sys_monitor" and
+            tool_calls3[0].arguments.get("metric") == "memory" and
+            tool_calls3[0].status == "success"
+        )
+
+        # 收集所有工具调用（用于性能指标）
+        all_tool_calls = tool_calls1 + tool_calls2 + tool_calls3
+
+        # 计算性能指标
+        tool_execution_times = [call.duration for call in all_tool_calls]
+        tool_execution_total = sum(tool_execution_times) if tool_execution_times else 0.0
+
+        metrics = PerformanceMetrics(
+            total_response_time=scenario1_time + scenario2_time + scenario3_time,
+            tool_call_count=len(all_tool_calls),
+            tool_execution_times=tool_execution_times,
+            tool_execution_total=tool_execution_total,
+            average_tool_execution=0.0,  # __post_init__会自动计算
+            llm_call_count=0,  # Agent未单独记录LLM调用次数
+            llm_total_time=0.0  # Agent未单独记录LLM调用时间
+        )
+
+        # 创建验证结果
+        validation_result1 = ValidationResult(
+            scenario_id=1,
+            scenario_description="调用sys_monitor工具获取CPU使用情况",
+            expected="调用sys_monitor工具，参数为{\"metric\": \"cpu\"}",
+            actual=f"调用工具: {tool_calls1[0].tool_name if len(tool_calls1) > 0 else '无'}, 参数: {tool_calls1[0].arguments if len(tool_calls1) > 0 else 'N/A'}",
+            passed=scenario1_passed,
+            notes=f"响应时间: {scenario1_time:.2f}s" if scenario1_passed else "未正确调用工具或参数错误"
+        )
+
+        validation_result2 = ValidationResult(
+            scenario_id=2,
+            scenario_description="调用sys_monitor工具获取所有系统状态",
+            expected="调用sys_monitor工具，参数为{\"metric\": \"all\"}",
+            actual=f"调用工具: {tool_calls2[0].tool_name if len(tool_calls2) > 0 else '无'}, 参数: {tool_calls2[0].arguments if len(tool_calls2) > 0 else 'N/A'}",
+            passed=scenario2_passed,
+            notes=f"响应时间: {scenario2_time:.2f}s" if scenario2_passed else "未正确调用工具或参数错误"
+        )
+
+        validation_result3 = ValidationResult(
+            scenario_id=3,
+            scenario_description="调用sys_monitor工具获取内存使用情况",
+            expected="调用sys_monitor工具，参数为{\"metric\": \"memory\"}",
+            actual=f"调用工具: {tool_calls3[0].tool_name if len(tool_calls3) > 0 else '无'}, 参数: {tool_calls3[0].arguments if len(tool_calls3) > 0 else 'N/A'}",
+            passed=scenario3_passed,
+            notes=f"响应时间: {scenario3_time:.2f}s" if scenario3_passed else "未正确调用工具或参数错误"
+        )
+
+        # 创建测试结果
+        test_result = TestResult(
+            test_case_id="T002",
+            status="passed" if all([scenario1_passed, scenario2_passed, scenario3_passed]) else "failed",
+            timestamp=datetime.now().isoformat(),
+            user_input="查看CPU使用率、系统状态、内存使用情况",
+            agent_response=f"{response1}\n\n{response2}\n\n{response3}",
+            tool_calls=all_tool_calls,
+            performance_metrics=metrics,
+            validation_results=[
+                validation_result1,
+                validation_result2,
+                validation_result3
+            ],
+            error_message=""
+        )
+
+        # 生成测试报告
+        report_path = "specs/002-agent-validation-test/reports/T002-系统监控.md"
+        reporter = TestReporter(test_case, test_result, report_path)
+        reporter.save()
+
+        # 打印测试报告摘要
+        print("\n" + "="*80)
+        print("测试报告摘要")
+        print("="*80)
+        print(f"测试编号: T002")
+        print(f"测试名称: {test_case.name}")
+        print(f"测试状态: {'✅ 通过' if test_result.status == 'passed' else '❌ 失败'}")
+        print(f"总响应时间: {metrics.total_response_time:.2f}s")
+        print(f"工具调用次数: {metrics.tool_call_count}")
+        print(f"验收结果: {sum(1 for v in test_result.validation_results if v.passed)}/{len(test_result.validation_results)}")
+        print(f"报告路径: {report_path}")
+        print("="*80)
+
+        # 等待用户确认（除非使用--auto-confirm）
+        if not auto_confirm:
+            user_input = input("\n测试完成。请确认是否通过？[Y/n] ")
+            if user_input.lower() == 'n':
+                pytest.fail("用户确认测试未通过")
+
+        # 断言所有场景都通过
+        assert scenario1_passed, "场景1失败：Agent应该调用sys_monitor工具，参数为cpu"
+        assert scenario2_passed, "场景2失败：Agent应该调用sys_monitor工具，参数为all"
+        assert scenario3_passed, "场景3失败：Agent应该调用sys_monitor工具，参数为memory"
+
+        print("\n✅ T002系统监控工具验证测试全部通过！")
+
+
 # TODO: 在阶段5实现T003命令执行工具验证测试
 # TODO: 在阶段6实现T004测试报告生成验证测试
 # TODO: 在阶段7实现T005多轮工具调用验证测试
