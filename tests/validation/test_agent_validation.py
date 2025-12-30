@@ -775,8 +775,351 @@ class TestT003CommandExecutor:
         print("\n✅ T003命令执行工具验证测试全部通过！")
 
 
-# TODO: 在阶段6实现T004测试报告生成验证测试
-# TODO: 在阶段7实现T005多轮工具调用验证测试
+# ============================================================================
+# T004: 测试报告生成验证 (用户故事4 - P1)
+# ============================================================================
+
+@pytest.mark.skipif(
+    not os.getenv("ZHIPU_API_KEY"),
+    reason="需要 ZHIPU_API_KEY 环境变量"
+)
+@pytest.mark.asyncio
+class TestT004ReportGeneration:
+    """T004: 测试报告生成验证"""
+
+    async def test_t004_report_generation(self, auto_confirm):
+        """
+        T004: 测试报告生成验证
+
+        验证测试报告生成功能，包含完整的测试信息。
+
+        测试场景：
+        1. 成功测试报告：给定测试执行成功，当生成报告，那么报告包含所有必需字段
+        2. 工具调用记录：给定工具被调用，当生成报告，那么报告记录完整的工具调用信息
+        3. 失败测试报告：给定测试失败，当生成报告，那么报告明确说明失败原因
+
+        成功标准：
+        - FR-003: 测试报告应包含测试编号、名称、描述、优先级
+        - FR-004: 测试报告应包含工具链调用详情
+        - FR-014: 性能指标记录（总响应时间、工具执行时间）
+        - FR-015: 测试状态和验收结果记录
+        """
+        import re
+        from pathlib import Path
+        from tests.validation.test_reporter import TestReporter
+
+        # 场景1: 成功测试报告
+        print("\n" + "="*80)
+        print("场景1: 成功测试报告验证")
+        print("="*80)
+
+        # 创建测试用例
+        test_case_success = TestCase(
+            id="T004-S1",
+            name="成功测试报告验证",
+            priority="P1",
+            description="验证成功测试的报告包含所有必需字段",
+            user_story="验证报告生成功能完整记录成功测试的所有信息",
+            acceptance_scenarios=[
+                AcceptanceScenario(
+                    given="测试执行成功",
+                    when="生成测试报告",
+                    then="报告包含测试编号、名称、输入、工具链、结果、时间、状态"
+                )
+            ]
+        )
+
+        # 创建成功的测试结果
+        from src.storage.history import ToolCall
+        from tests.validation.test_framework import PerformanceMetrics
+
+        tool_calls_success = [
+            ToolCall(
+                tool_name="sys_monitor",
+                arguments={"metric": "cpu"},
+                result="CPU使用率: 15.2%\n负载: 2.1",
+                status="success",
+                duration=1.5,
+                timestamp=datetime.now().isoformat()
+            )
+        ]
+
+        metrics_success = PerformanceMetrics(
+            total_response_time=3.2,
+            tool_call_count=1,
+            tool_execution_times=[1.5],
+            tool_execution_total=1.5,
+            average_tool_execution=1.5,
+            llm_call_count=1,
+            llm_total_time=1.7
+        )
+
+        from tests.validation.test_framework import ValidationResult
+
+        test_result_success = TestResult(
+            test_case_id="T004-S1",
+            status="passed",
+            timestamp=datetime.now().isoformat(),
+            user_input="CPU使用情况",
+            agent_response="CPU使用率为15.2%，系统运行正常。",
+            tool_calls=tool_calls_success,
+            performance_metrics=metrics_success,
+            validation_results=[
+                ValidationResult(
+                    scenario_id=1,
+                    scenario_description="验证工具调用",
+                    expected="调用sys_monitor工具",
+                    actual="成功调用sys_monitor工具，返回CPU使用率",
+                    passed=True,
+                    notes="工具调用成功"
+                )
+            ],
+            error_message=""
+        )
+
+        # 生成报告
+        report_path_s1 = "specs/002-agent-validation-test/reports/T004-S1-成功报告.md"
+        reporter_s1 = TestReporter(test_case_success, test_result_success, report_path_s1)
+        reporter_s1.save()
+
+        # 验证报告文件存在
+        scenario1_passed_file = Path(report_path_s1).exists()
+        print(f"报告文件存在: {scenario1_passed_file}")
+
+        # 读取并验证报告内容
+        if scenario1_passed_file:
+            report_content = Path(report_path_s1).read_text(encoding='utf-8')
+
+            # 验证必需字段
+            required_fields = {
+                "测试编号": r"测试编号:\s*T004-S1",
+                "测试名称": r"测试名称:\s*成功测试报告验证",
+                "测试输入": r"## 测试输入",
+                "工具调用详情": r"## 工具链调用详情",
+                "最终结果": r"## 最终结果",
+                "性能指标": r"## 性能指标",
+                "验收结果": r"## 验收结果",
+                "测试结论": r"## 测试结论"
+            }
+
+            missing_fields = []
+            for field_name, pattern in required_fields.items():
+                if not re.search(pattern, report_content):
+                    missing_fields.append(field_name)
+
+            scenario1_passed_content = len(missing_fields) == 0
+            print(f"报告字段完整性: {scenario1_passed_content}")
+            if missing_fields:
+                print(f"缺失字段: {', '.join(missing_fields)}")
+
+        # 场景2: 工具调用记录验证
+        print("\n" + "="*80)
+        print("场景2: 工具调用记录验证")
+        print("="*80)
+
+        # 创建包含多个工具调用的测试结果
+        tool_calls_multi = [
+            ToolCall(
+                tool_name="sys_monitor",
+                arguments={"metric": "all"},
+                result="系统状态: CPU 15%, Memory 45%, Disk 60%",
+                status="success",
+                duration=2.1,
+                timestamp=datetime.now().isoformat()
+            ),
+            ToolCall(
+                tool_name="command_executor",
+                arguments={"command": "ls", "args": ["-la"]},
+                result="文件列表: file1.txt, file2.py",
+                status="success",
+                duration=0.8,
+                timestamp=datetime.now().isoformat()
+            )
+        ]
+
+        metrics_multi = PerformanceMetrics(
+            total_response_time=5.5,
+            tool_call_count=2,
+            tool_execution_times=[2.1, 0.8],
+            tool_execution_total=2.9,
+            average_tool_execution=1.45,
+            llm_call_count=2,
+            llm_total_time=2.6
+        )
+
+        test_case_multi = TestCase(
+            id="T004-S2",
+            name="工具调用记录验证",
+            priority="P1",
+            description="验证报告完整记录多个工具调用",
+            user_story="验证报告生成功能完整记录所有工具调用信息",
+            acceptance_scenarios=[
+                AcceptanceScenario(
+                    given="工具被调用",
+                    when="生成报告",
+                    then="报告记录工具名称、参数、结果、状态、时间"
+                )
+            ]
+        )
+
+        test_result_multi = TestResult(
+            test_case_id="T004-S2",
+            status="passed",
+            timestamp=datetime.now().isoformat(),
+            user_input="检查系统状态并列出文件",
+            agent_response="系统运行正常，文件已列出。",
+            tool_calls=tool_calls_multi,
+            performance_metrics=metrics_multi,
+            validation_results=[
+                ValidationResult(
+                    scenario_id=1,
+                    scenario_description="验证多工具调用",
+                    expected="调用sys_monitor和command_executor",
+                    actual="成功调用2个工具",
+                    passed=True,
+                    notes="工具调用正确"
+                )
+            ],
+            error_message=""
+        )
+
+        report_path_s2 = "specs/002-agent-validation-test/reports/T004-S2-工具调用记录.md"
+        reporter_s2 = TestReporter(test_case_multi, test_result_multi, report_path_s2)
+        reporter_s2.save()
+
+        # 验证工具调用记录
+        report_content_s2 = Path(report_path_s2).read_text(encoding='utf-8')
+
+        # 验证每个工具调用的必需字段
+        tool_call_fields = {
+            "工具名称": r"\*\*工具名称\*\*:\s*sys_monitor|command_executor",
+            "调用时间": r"\*\*调用时间\*\*:",
+            "参数": r"\*\*参数\*\*",
+            "执行时间": r"\*\*执行时间\*\*:",
+            "状态": r"\*\*状态\*\*:\s*✅",
+            "结果": r"\*\*结果\*\*"
+        }
+
+        missing_tool_fields = []
+        for field_name, pattern in tool_call_fields.items():
+            if not re.search(pattern, report_content_s2):
+                missing_tool_fields.append(field_name)
+
+        scenario2_passed = len(missing_tool_fields) == 0
+        print(f"工具调用记录完整性: {scenario2_passed}")
+        if missing_tool_fields:
+            print(f"缺失工具字段: {', '.join(missing_tool_fields)}")
+
+        # 场景3: 失败测试报告验证
+        print("\n" + "="*80)
+        print("场景3: 失败测试报告验证")
+        print("="*80)
+
+        test_case_failure = TestCase(
+            id="T004-S3",
+            name="失败测试报告验证",
+            priority="P1",
+            description="验证失败测试的报告包含错误信息",
+            user_story="验证报告生成功能清晰记录失败原因",
+            acceptance_scenarios=[
+                AcceptanceScenario(
+                    given="测试失败",
+                    when="生成报告",
+                    then="报告明确说明失败原因和错误信息"
+                )
+            ]
+        )
+
+        # 创建失败的测试结果
+        test_result_failure = TestResult(
+            test_case_id="T004-S3",
+            status="failed",
+            timestamp=datetime.now().isoformat(),
+            user_input="执行不存在的命令",
+            agent_response="工具调用失败",
+            tool_calls=[
+                ToolCall(
+                    tool_name="command_executor",
+                    arguments={"command": "nonexistent"},
+                    result="命令不存在",
+                    status="failed",
+                    duration=0.5,
+                    timestamp=datetime.now().isoformat()
+                )
+            ],
+            performance_metrics=PerformanceMetrics(
+                total_response_time=1.0,
+                tool_call_count=1,
+                tool_execution_times=[0.5],
+                tool_execution_total=0.5,
+                average_tool_execution=0.5,
+                llm_call_count=1,
+                llm_total_time=0.5
+            ),
+            validation_results=[
+                ValidationResult(
+                    scenario_id=1,
+                    scenario_description="验证工具调用",
+                    expected="成功执行命令",
+                    actual="命令不存在",
+                    passed=False,
+                    notes="命令不在白名单中"
+                )
+            ],
+            error_message="命令'nonexistent'不在白名单中"
+        )
+
+        report_path_s3 = "specs/002-agent-validation-test/reports/T004-S3-失败报告.md"
+        reporter_s3 = TestReporter(test_case_failure, test_result_failure, report_path_s3)
+        reporter_s3.save()
+
+        # 验证失败报告包含错误信息
+        report_content_s3 = Path(report_path_s3).read_text(encoding='utf-8')
+
+        has_error_section = "## 测试结论" in report_content_s3
+        has_failure_reason = "❌ **测试失败**" in report_content_s3
+        has_error_message = test_result_failure.error_message in report_content_s3
+
+        scenario3_passed = has_error_section and has_failure_reason and has_error_message
+        print(f"错误信息完整性: {scenario3_passed}")
+        print(f"  包含测试结论: {has_error_section}")
+        print(f"  包含失败标记: {has_failure_reason}")
+        print(f"  包含错误消息: {has_error_message}")
+
+        # 综合验证
+        all_scenarios_passed = (
+            scenario1_passed_file and scenario1_passed_content and
+            scenario2_passed and
+            scenario3_passed
+        )
+
+        # 打印测试报告摘要
+        print("\n" + "="*80)
+        print("测试报告摘要")
+        print("="*80)
+        print(f"测试编号: T004")
+        print(f"测试名称: {test_case_success.name}")
+        print(f"测试状态: {'✅ 通过' if all_scenarios_passed else '❌ 失败'}")
+        print(f"场景1（成功报告）: {'✅ 通过' if scenario1_passed_file and scenario1_passed_content else '❌ 失败'}")
+        print(f"场景2（工具调用记录）: {'✅ 通过' if scenario2_passed else '❌ 失败'}")
+        print(f"场景3（失败报告）: {'✅ 通过' if scenario3_passed else '❌ 失败'}")
+        print(f"报告路径: {report_path_s1}, {report_path_s2}, {report_path_s3}")
+        print("="*80)
+
+        # 等待用户确认（除非使用--auto-confirm）
+        if not auto_confirm:
+            user_input = input("\n测试完成。请确认是否通过？[Y/n] ")
+            if user_input.lower() == 'n':
+                pytest.fail("用户确认测试未通过")
+
+        # 断言所有场景都通过
+        assert scenario1_passed_file and scenario1_passed_content, "场景1失败：报告文件不存在或缺少必需字段"
+        assert scenario2_passed, "场景2失败：工具调用记录不完整"
+        assert scenario3_passed, "场景3失败：失败报告缺少错误信息"
+
+        print("\n✅ T004测试报告生成验证测试全部通过！")
+
+
 # TODO: 在阶段7实现T005多轮工具调用验证测试
 # TODO: 在阶段8实现T006 RAG检索工具验证测试
 # TODO: 在阶段9实现T007对话上下文验证测试
