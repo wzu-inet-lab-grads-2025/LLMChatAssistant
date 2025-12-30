@@ -17,6 +17,9 @@ from ..tools.base import Tool, ToolExecutionResult
 from ..tools.command import CommandTool
 from ..tools.monitor import MonitorTool
 from ..tools.rag import RAGTool
+from ..tools.file_upload import FileUploadTool
+from ..tools.file_download import FileDownloadTool
+from ..tools.file_search import FileSemanticSearchTool
 from ..utils.path_validator import get_path_validator
 from ..utils.config import get_config
 
@@ -31,6 +34,8 @@ class ReActAgent:
     tool_timeout: int = 5  # 工具执行超时（秒）
     status_callback: callable = None  # 状态更新回调函数
     path_validator: Optional[Any] = None  # 路径验证器
+    rdt_server: Optional[Any] = None  # RDT服务器实例
+    http_base_url: Optional[str] = None  # HTTP下载基础URL
 
     def __post_init__(self):
         """初始化工具"""
@@ -38,6 +43,7 @@ class ReActAgent:
         if not self.tools:
             from ..storage.vector_store import VectorStore
             from ..storage.index_manager import IndexManager
+            from ..server.rdt_server import RDTServer
 
             # 获取配置
             config = get_config()
@@ -55,6 +61,15 @@ class ReActAgent:
                 config=config.file_access
             )
 
+            # 初始化RDT服务器（混合传输架构 - 方案A）
+            if self.rdt_server is None:
+                self.rdt_server = RDTServer(
+                    host="0.0.0.0",
+                    port=9998,
+                    window_size=5,
+                    timeout=0.1
+                )
+
             # 创建工具实例（带路径验证器）
             self.tools = {
                 "command_executor": CommandTool(
@@ -68,6 +83,22 @@ class ReActAgent:
                     index_manager=index_manager,
                     path_validator=self.path_validator,
                     auto_index=config.file_access.auto_index
+                ),
+                # 文件操作工具
+                "file_upload": FileUploadTool(
+                    index_manager=index_manager,
+                    storage_dir="storage/uploads"
+                ),
+                "file_download": FileDownloadTool(
+                    path_validator=self.path_validator,
+                    rdt_server=self.rdt_server,
+                    http_base_url=self.http_base_url,
+                    client_type="cli"  # 默认CLI客户端
+                ),
+                "file_semantic_search": FileSemanticSearchTool(
+                    llm_provider=self.llm_provider,
+                    vector_store=vector_store,
+                    index_manager=index_manager
                 )
             }
 
@@ -276,6 +307,7 @@ class ReActAgent:
 1. 优先使用sys_monitor进行系统资源查询（CPU、内存、磁盘使用率）
 2. 仅当用户明确使用命令名（如"ls"、"cat"、"free -h"）时才使用command_executor
 3. 抽象的系统状态查询统一使用sys_monitor，具体命令执行使用command_executor
+4. 文件操作（上传、下载、检索）使用专用文件工具
 
 ## 决策流程
 
@@ -283,6 +315,9 @@ class ReActAgent:
 - 系统资源查询（CPU/内存/磁盘使用率、系统状态）→ sys_monitor（优先）
 - 具体命令名执行（ls/cat/grep/head/tail/ps/pwd/whoami/df/free）→ command_executor
 - 文档/代码搜索（搜索文档、查找说明、检索信息）→ rag_search
+- 文件上传（上传文件、发送文件给你）→ file_upload
+- 文件下载（下载文件、发给我、把XX文件发给我）→ file_download
+- 文件语义检索（搜索XX文件、找找关于XX的文档、有没有XX文档）→ file_semantic_search
 - 问候/闲聊 → 直接回答
 
 **步骤2: 匹配命令到工具**
@@ -370,6 +405,23 @@ ARGS: {"query": "配置说明"}
 用户: 查找关于日志的文档
 TOOL: rag_search
 ARGS: {"query": "日志"}
+
+### 文件操作示例
+
+用户: 我有一个文件要上传
+TOOL: file_upload
+ARGS: {"filename": "config.yaml", "content": "server:\n  port: 8080", "content_type": "application/yaml"}
+
+用户: 把配置文件发给我
+TOOL: file_semantic_search
+ARGS: {"query": "配置文件", "top_k": 3}
+# 找到文件后，再执行:
+TOOL: file_download
+ARGS: {"file_path": "/home/zhoutianyu/tmp/LLMChatAssistant/storage/uploads/550e8400/config.yaml"}
+
+用户: 搜索数据库配置文档
+TOOL: file_semantic_search
+ARGS: {"query": "数据库配置", "top_k": 3}
 
 ## 负例（不需要工具）
 

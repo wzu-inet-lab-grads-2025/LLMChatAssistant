@@ -172,6 +172,11 @@ class Server:
             # 设置 Agent 的状态回调（用于发送状态更新）
             self.agent.status_callback = lambda msg: session.send_status_json(msg)
 
+            # 动态更新file_download工具的client_type（支持混合传输架构）
+            if "file_download" in self.agent.tools:
+                self.agent.tools["file_download"].client_type = session.client_type
+                self.logger.debug(f"[{session.session_id[:8]}] 文件下载工具客户端类型: {session.client_type}")
+
             # 使用 Agent 的 think_stream 方法，它会自动发送状态通知
             full_response = ""
             buffer = ""

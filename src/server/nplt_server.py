@@ -40,6 +40,7 @@ class Session:
     recv_seq: int = 0                            # 接收序列号
     conversation_history: Optional[ConversationHistory] = None  # 对话历史
     upload_state: Optional[Dict] = None  # 文件上传状态
+    client_type: str = "cli"                     # 客户端类型：cli | web | desktop
 
     HEARTBEAT_TIMEOUT = 90  # 心跳超时时间（秒）
 
