@@ -1,33 +1,49 @@
 <!--
 同步报告:
 
-版本更改: 1.4.1 → 1.4.2 (PATCH - 强化测试真实性原则，禁止mock实现)
+版本更改: 1.4.2 → 1.5.1 (MINOR - 添加Agent工具设计原则和混合检索策略规范)
 
 修改的原则:
-- 测试真实性 (Test Authenticity) → 强化约束，明确禁止所有mock实现，必须使用真实智谱API（glm-4-flash或glm-4.5-flash免费模型）
+- 多层防御策略 (Defense in Depth) → 扩展，增加工具设计的安全要求
+- 可审计性与透明性 (Auditability & Transparency) → 扩展，增加工具执行审计要求
 
-添加的原则: 无
+添加的原则:
+- 工具职责单一原则 (Single Responsibility Principle for Tools)
+- 协议层分离原则 (Protocol Layer Separation Principle)
+- 工具语义清晰原则 (Tool Semantic Clarity Principle)
+- 代码复用与继承原则 (Code Reuse and Inheritance Principle)
+- 混合检索策略原则 (Hybrid Search Strategy Principle) - v1.5.1新增
+- Agent工具清单规范 (Agent Tool Inventory Specification)
 
 删除的原则: 无
 
 需要更新的模板:
 - ✅ .specify/memory/constitution.md - 已更新
-- ⚠️ src/llm/mock.py - MUST删除或标记为DEPRECATED，违反章程原则
-- ⚠️ tests/validation/test_agent_comprehensive.py - MUST更新为使用真实ZhipuProvider
+- ⚠️ .specify/templates/spec-template.md - MUST添加工具设计约束部分
+- ⚠️ .specify/templates/plan-template.md - MUST添加工具设计审查检查项
+- ⚠️ .specify/templates/tasks-template.md - MUST添加工具实现任务类型
 
 审查备注 (2025-12-31):
-- 章程明确禁止mock实现和模拟调用
-- 智谱AI提供免费模型（glm-4-flash、glm-4.5-flash），必须使用真实API进行测试
-- MockLLMProvider违反章程核心原则，必须移除
-- 所有LLM相关测试必须配置真实的ZHIPU_API_KEY环境变量
-- 测试真实性是不可妥协的原则，确保代码在真实环境中工作
+- 工具设计从7个减少到5个，消除90%代码重复（RAG + file_semantic_search合并）
+- file_upload工具重新定位：从"处理文件上传"改为"文件索引和上下文管理"
+- 明确Agent职责边界：决策层/协调层/交互层，协议层负责实际数据传输
+- 支持文件上传时同时发送用户说明（CLI: /upload filepath 用户说明，Web: 上传按钮+文本框）
+- 设计原则核心：职责单一、安全第一、协议分离、语义清晰、代码复用、混合检索
+- Session扩展：添加uploaded_files和upload_state字段，支持文件索引管理
+- 混合检索策略：文件检索必须支持精确匹配、模糊匹配、语义检索三层策略（v1.5.1）
 
 后续 TODO:
-- [REQUIRED] 删除src/llm/mock.py文件
-- [REQUIRED] 更新tests/validation/test_agent_comprehensive.py使用真实ZhipuProvider
-- [REQUIRED] 在.env中配置有效的ZHIPU_API_KEY
-- [REQUIRED] 验证所有测试使用真实API运行
-- 建议在README中添加API key配置说明，提供免费模型链接
+- [REQUIRED] 合并src/tools/rag.py和src/tools/file_search.py为src/tools/semantic_search.py
+- [REQUIRED] 重新定义src/tools/file_upload.py为文件索引管理工具
+- [REQUIRED] 扩展Session类，添加uploaded_files和upload_state字段
+- [REQUIRED] 更新src/server/agent.py工具注册，删除RAG和file_semantic_search，添加新的semantic_search
+- [REQUIRED] 更新Agent系统提示词，反映新的工具清单和使用场景
+- [REQUIRED] 实施混合检索策略（关键字+语义），提升精确文件名匹配准确率（已提升为v1.5.1强制性原则）
+- [REQUIRED] 实施结构化错误处理，支持ErrorType枚举和自我修正机制
+- [OPTIONAL] 实施异步命令执行（command_executor_async），支持长时运行命令
+- [REQUIRED] 更新功能测试用例，验证新的工具清单和调用链
+- [REQUIRED] 在docs/目录添加工具设计规范文档，详细说明5个工具的职责边界
+- [REQUIRED] 实施混合检索测试，验证精确匹配、模糊匹配、语义检索三层策略
 -->
 
 # LLMChatAssistant 项目章程
@@ -84,21 +100,21 @@
 
 ### 自动化与按需索引 (Automation and Lazy Indexing)
 
-当用户访问白名单中的文件时，系统 MUST 自动创建向量索引（如果尚未索引）。RAG 工具 MUST 支持按需索引（execute_async 方法），在首次访问文件时自动调用索引管理器创建索引。索引管理器 MUST 使用懒加载策略，避免重复索引已索引的文件。系统 MUST 将索引持久化存储到 storage/vectors/ 目录，并在重启后自动加载。索引创建 MUST 验证文件内容类型（仅允许文本文件）和文件大小（默认最大 10MB）。
+当用户访问白名单中的文件时，系统 MUST 自动创建向量索引（如果尚未索引）。semantic_search 工具 MUST 支持按需索引（execute_async 方法），在首次访问文件时自动调用索引管理器创建索引。索引管理器 MUST 使用懒加载策略，避免重复索引已索引的文件。系统 MUST 将索引持久化存储到 storage/vectors/ 目录，并在重启后自动加载。索引创建 MUST 验证文件内容类型（仅允许文本文件）和文件大小（默认最大 10MB）。
 
 **理由**: 自动索引提供透明的用户体验，用户无需手动管理索引。懒加载策略减少不必要的计算和存储开销。按需创建索引只在首次访问时发生，提高系统启动速度。持久化索引确保重启后无需重新索引，提高效率。文件类型和大小验证防止恶意文件导致系统问题。
 
 ### 多层防御策略 (Defense in Depth)
 
-系统 MUST 实现多层安全验证，任何一层失败都不应导致安全漏洞。文件访问 MUST 依次通过：路径白名单验证、路径黑名单检查、文件大小限制、内容类型验证。命令执行 MUST 限制输出大小（默认最大 100KB），防止内存耗尽。命令参数 MUST 验证是否包含黑名单字符（;, &, |, >, <, `, $, (, ), \n, \r），防止命令注入。正则表达式搜索（grep 工具）MUST 验证正则复杂度，防止 ReDoS 攻击。Glob 模式匹配 MUST 限制最大文件数（默认 100 个），防止 DoS 攻击。
+系统 MUST 实现多层安全验证，任何一层失败都不应导致安全漏洞。文件访问 MUST 依次通过：路径白名单验证、路径黑名单检查、文件大小限制、内容类型验证。命令执行 MUST 限制输出大小（默认最大 100KB），防止内存耗尽。命令参数 MUST 验证是否包含黑名单字符（;, &, |, >, <, `, $, (, ), \n, \r），防止命令注入。正则表达式搜索（grep 工具）MUST 验证正则复杂度，防止 ReDoS 攻击。Glob 模式匹配 MUST 限制最大文件数（默认 100 个），防止 DoS 攻击。工具执行 MUST 实现参数验证机制，防止类型错误和非法参数导致系统异常。工具返回结果 MUST 使用结构化的ToolExecutionResult格式，包含success、output、error、error_type、suggested_fix等字段，支持Agent的错误处理和自我修正。
 
-**理由**: 深度防御策略确保即使一层防御失效，其他层仍能提供保护。例如，即使白名单配置错误，黑名单仍能阻止某些敏感文件访问。输出大小限制防止大文件导致内存耗尽。参数验证防止命令注入。正则复杂度检查防止 CPU 耗尽。Glob 限制防止返回数万个文件导致系统崩溃。
+**理由**: 深度防御策略确保即使一层防御失效，其他层仍能提供保护。例如，即使白名单配置错误，黑名单仍能阻止某些敏感文件访问。输出大小限制防止大文件导致内存耗尽。参数验证防止命令注入和类型错误。正则复杂度检查防止 CPU 耗尽。Glob 限制防止返回数万个文件导致系统崩溃。结构化错误返回使Agent能够理解失败原因并进行自我修正，提升用户体验。
 
 ### 可审计性与透明性 (Auditability & Transparency)
 
-所有文件访问操作、索引创建和工具调用 MUST 记录日志。当文件访问被拒绝时，系统 MUST 返回明确的拒绝理由（如"路径不在白名单中"、"路径匹配禁止模式: */.env"）。当自动索引创建时，系统 MUST 记录索引创建的详细信息（文件路径、分块数量、创建时间）。工具执行结果 MUST 包含执行状态、成功/失败标志和持续时间。系统 MUST 提供索引状态查询接口，允许用户检查哪些文件已索引、哪些文件允许访问。
+所有文件访问操作、索引创建和工具调用 MUST 记录日志。当文件访问被拒绝时，系统 MUST 返回明确的拒绝理由（如"路径不在白名单中"、"路径匹配禁止模式: */.env"）。当自动索引创建时，系统 MUST 记录索引创建的详细信息（文件路径、分块数量、创建时间）。工具执行结果 MUST 包含执行状态、成功/失败标志和持续时间。系统 MUST 提供索引状态查询接口，允许用户检查哪些文件已索引、哪些文件允许访问。工具执行失败时 MUST 返回结构化错误信息（ErrorType枚举），包括错误类型、错误代码、建议修复方案（suggested_fix）和是否可重试（retry_able）。
 
-**理由**: 审计日志对安全合规和问题排查至关重要。明确的拒绝消息帮助用户理解为什么访问被拒绝，以及如何修正配置。索引创建日志帮助用户了解系统行为。详细的执行结果支持调试和性能分析。状态查询接口提供系统透明度，帮助用户理解当前系统状态。
+**理由**: 审计日志对安全合规和问题排查至关重要。明确的拒绝消息帮助用户理解为什么访问被拒绝，以及如何修正配置。索引创建日志帮助用户了解系统行为。详细的执行结果支持调试和性能分析。状态查询接口提供系统透明度，帮助用户理解当前系统状态。结构化错误信息支持Agent的错误处理和自我修正，减少用户困惑，提升系统可用性。
 
 ### 多协议传输架构 (Multi-Protocol Transport Architecture)
 
@@ -108,9 +124,61 @@
 
 ### 数据传输格式标准 (Data Transmission Format Standards)
 
-系统 MUST 根据数据类型选择合适的传输格式，平衡性能、可读性和结构化信息保留。实时聊天消息（单条消息）MUST 使用纯文本格式通过NPLT CHAT_TEXT消息类型传输，包括用户消息、Agent响应、心跳等。实时聊天中的Agent状态更新（如思考过程、工具调用状态）MUST 使用JSON格式通过NPLT AGENT_THOUGHT消息类型传输，支持流式输出的stream_start标记、thinking/tool_call/generating状态类型。历史记录批量传输（HISTORY_REQUEST响应）MUST 使用JSON格式传输，MUST 保留完整的结构化信息，包括role、content、timestamp、tool_calls（工具名称、参数、结果、状态、持续时间）、metadata。文件传输相关消息（FILE_METADATA、DOWNLOAD_OFFER、SESSION_SWITCH等）MUST 使用JSON格式传输，确保结构化数据的完整性。NPLT协议数据字段 MUST 支持UTF-8编码的文本或JSON数据。
+系统 MUST 根据数据类型选择合适的传输格式，平衡性能、可读性和结构化信息保留。实时聊天消息（单条消息）MUST 使用纯文本格式通过NPLT CHAT_TEXT消息类型传输，包括用户消息、Agent响应、心跳等。实时聊天中的Agent状态更新（如思考过程、工具调用状态）MUST 使用JSON格式通过NPLT AGENT_THOUGHT消息类型传输，支持流式输出的stream_start标记、thinking/tool_call/generating状态类型。历史记录批量传输（HISTORY_REQUEST响应）MUST 使用JSON格式传输，MUST 保留完整的结构化信息，包括role、content、timestamp、tool_calls（工具名称、参数、结果、状态、持续时间）、metadata。文件传输相关消息（FILE_METADATA、DOWNLOAD_OFFER、SESSION_SWITCH等）MUST 使用JSON格式传输，确保结构化数据的完整性。NPLT协议数据字段 MUST 支持UTF-8编码的文本或JSON数据。文件上传 MUST 支持同时传输文件和用户说明（CLI: /upload filepath 用户说明，Web: 上传按钮+文本框）。服务器接收文件后 MUST 自动索引，并将文件元数据记录到Session.uploaded_files，支持后续自然语言引用（"这个文件"、"这些文件"、"之前上传的"）。用户文本MUST附加file_ref标记（[file_ref:{file_id}]），Agent通过Session获取文件信息并处理。
 
-**理由**: 实时聊天使用纯文本格式保持简单高效，减少序列化/反序列化开销，支持实时流式输出（边思考边显示）。Agent状态使用JSON格式支持结构化状态信息（状态类型、内容），便于客户端解析和UI更新。历史记录使用JSON格式保留tool_calls等结构化数据，使客户端能够完整重建对话过程、显示工具调用详情、支持搜索和过滤。文件传输使用JSON格式确保元数据完整性（文件名、大小、会话ID等），支持文件上传下载协调。混合格式策略在性能和功能之间取得平衡，实时性强的场景使用文本，需要结构化数据的场景使用JSON。详细协议格式和调用链路参见docs/message-flow-analysis.md和docs/protocol-call-chain.md。
+**理由**: 实时聊天使用纯文本格式保持简单高效，减少序列化/反序列化开销，支持实时流式输出（边思考边显示）。Agent状态使用JSON格式支持结构化状态信息（状态类型、内容），便于客户端解析和UI更新。历史记录使用JSON格式保留tool_calls等结构化数据，使客户端能够完整重建对话过程、显示工具调用详情、支持搜索和过滤。文件传输使用JSON格式确保元数据完整性（文件名、大小、会话ID等），支持文件上传下载协调。文件上传同时传输用户说明，提升用户体验，避免"先上传后说明"的繁琐流程。自动索引+Session文件记录支持自然语言文件引用，实现流畅的对话体验。混合格式策略在性能和功能之间取得平衡，实时性强的场景使用文本，需要结构化数据的场景使用JSON。详细协议格式和调用链路参见docs/message-flow-analysis.md和docs/protocol-call-chain.md。
+
+### 工具职责单一原则 (Single Responsibility Principle for Tools)
+
+Agent工具MUST遵循职责单一原则，每个工具只做一件事并做好一件事。工具职责MUST清晰明确，避免功能重叠和职责模糊。系统MUST消除代码重复，功能相同的工具MUST合并或通过继承提取公共逻辑。工具MUST通过描述、输入输出格式明确其职责边界，LLM SHOULD能够根据工具名称和描述准确选择合适的工具。工具职责边界MUST与协议层职责分离，Agent工具负责决策和协调，协议层（NPLT/RDT/HTTP）负责实际数据传输。
+
+**理由**: 职责单一原则降低工具复杂度，提高可维护性。功能重叠导致LLM混淆（如RAG和file_semantic_search代码重复90%），增加测试成本。合并重复工具减少工具数量，简化LLM的决策空间，提升工具选择准确率。职责分离使工具更容易测试和调试，符合软件工程的最佳实践。明确的职责边界防止"工具到底做什么"的歧义，提升系统可用性。
+
+### 协议层分离原则 (Protocol Layer Separation Principle)
+
+Agent工具MUST不参与实际数据传输，数据传输MUST由协议层（NPLT/RDT/HTTP）处理。Agent工具的职责是决策和协调：定位文件（semantic_search）、选择传输协议（file_download._select_transport_mode）、返回下载令牌或URL（file_download）。文件上传由客户端+NPLT Server处理，Agent通过Session.uploaded_files获取文件信息，MUST不调用file_upload工具处理上传。file_download工具MUST只准备下载信息（返回令牌/URL），实际传输由RDT/HTTP协议自动执行。
+
+**理由**: 协议层分离符合关注点分离原则。Agent是决策层，不应该处理底层传输细节。协议层已经实现了完整的传输机制（RDT的滑动窗口、HTTP的浏览器下载、NPLT的流式传输），Agent重复实现这些功能是冗余的。职责分离使系统更容易扩展（添加新协议只需扩展协议层），更容易测试（工具层和协议层独立测试）。避免"Agent工具实际传输文件"的设计错误，如file_upload.execute(filename, content)试图处理文件上传，但实际上文件内容在Agent上下文中无法获取。
+
+### 工具语义清晰原则 (Tool Semantic Clarity Principle)
+
+工具名称和描述MUST清晰反映其职责，避免歧义。工具描述MUST包含：功能说明、适用场景、关键词列表、使用示例（可选）。工具名称SHOULD使用动词_名词格式（如semantic_search、file_download），避免抽象名称。工具描述MUST明确不做什么（如"注意：此工具不处理文件上传，文件上传由协议层完成"）。工具参数名MUST直观易懂（如query、top_k、file_path），避免缩写和技术术语。
+
+**理由**: 清晰的工具语义帮助LLM准确理解工具用途，减少工具选择错误。歧义的描述导致LLM混淆（如RAG的"检索增强生成"和file_semantic_search的"文件语义检索"实际功能相同）。明确的"不做什么"防止误用（如误认为file_upload工具可以处理文件上传）。直观的参数名提升代码可读性，降低使用门槛。
+
+### 代码复用与继承原则 (Code Reuse and Inheritance Principle)
+
+功能相同或相似的工具MUST通过继承提取公共逻辑到基类，避免代码重复。基类MUST定义公共接口和公共实现，子类MUST只实现差异化的部分。代码重复率MUST控制在20%以下，超过此阈值MUST重构。工具继承层次MUST清晰，避免过深继承（继承深度不超过3层）。公共逻辑包括但不限于：参数验证、错误处理、日志记录、结果格式化。
+
+**理由**: 代码重复导致维护成本增加（修改需要同步多处），容易引入不一致的bug。继承提取公共逻辑符合DRY（Don't Repeat Yourself）原则，减少代码量，提高可维护性。控制继承深度防止过度设计，保持系统简单清晰。公共逻辑集中管理，确保所有工具遵循相同的处理流程（如统一的参数验证机制）。
+
+### 混合检索策略原则 (Hybrid Search Strategy Principle)
+
+文件检索工具MUST实施混合检索策略，按优先级依次使用：精确匹配、模糊匹配、语义检索。精确匹配MUST作为第一优先级：当查询包含明确文件名（如"config.yaml"、"app.log"）时，MUST优先进行精确文件名匹配（similarity=1.0）。模糊匹配MUST作为第二优先级：当精确匹配未命中时，MUST进行关键词匹配、前缀匹配、通配符匹配（如"config" → config.yaml、config.json、config.yml）。语义检索MUST作为第三优先级和兜底策略：当精确和模糊匹配均未命中或结果不足时，MUST使用向量语义检索，基于查询内容相似度返回结果。检索结果MUST包含match_type字段（exact_filename、fuzzy_filename、semantic），明确标识匹配方式，便于Agent理解结果来源。检索工具MUST支持scope参数过滤（all/system/uploads），控制检索范围。系统MUST合并多层检索结果并去重，按相似度排序返回top_k结果。
+
+**理由**: 纯向量检索对精确文件名查询效果不佳（如"下载config.yaml"可能返回相似但不完全匹配的结果）。混合检索策略确保精确查询（用户知道确切文件名）直接命中，避免不必要的向量计算。模糊匹配支持部分文件名查询（如"config"），提升用户体验。语义检索作为兜底策略，处理自然语言查询（如"数据库配置在哪里"），保持灵活性。三层策略在准确率和召回率之间取得平衡，整体提升文件检索准确率从90%到98%以上。match_type字段使Agent能够理解结果可信度（精确匹配>模糊匹配>语义匹配），支持更智能的决策。scope过滤防止检索范围过大，提升性能和准确性。
+
+### Agent工具清单规范 (Agent Tool Inventory Specification)
+
+Agent工具MUST精简且必要，工具总数SHOULD控制在5-7个范围内。工具MUST分类清晰：系统管理类（sys_monitor、command_executor）、文件操作类（semantic_search、file_download、file_upload）。系统MUST维护统一的工具清单，明确每个工具的：名称、职责、输入格式、输出格式、安全机制、使用场景。工具清单MUST文档化，存储在docs/目录（如agent_complete_specification.md），并随工具变更同步更新。新增工具MUST经过设计评审，确认：是否确实需要、是否与现有工具重叠、是否遵循职责单一原则。
+
+**理由**: 精简的工具清单降低LLM决策复杂度，提升工具选择准确率。过多的工具（>7个）导致LLM混淆，增加测试成本。工具分类帮助理解工具职责边界，便于维护和扩展。文档化的工具清单提供设计参考，防止"添加相似工具"的重复设计。设计评审机制防止工具数量膨胀，确保每个工具都有明确的必要性。
+
+**当前工具清单（v1.5.1）**：
+
+| 工具名称 | 核心职责 | 输入 | 输出 | 安全机制 |
+|---------|---------|------|------|---------|
+| sys_monitor | 系统资源监控 | metric类型 | CPU/内存/磁盘使用率 | 无需特殊防护 |
+| command_executor | 执行系统命令 | command + args | 命令输出 | 白名单+黑名单+超时 |
+| semantic_search | 统一语义检索（混合策略） | query + scope | 文件路径+内容片段 | 路径白名单 |
+| file_download | 准备文件下载 | file_path | 下载令牌/URL | 路径白名单 |
+| file_upload | 文件索引和上下文管理 | reference + filters | 文件元数据列表 | Session隔离 |
+
+**设计决策记录**：
+- 合并RAGTool和FileSemanticSearchTool为SemanticSearchTool（v1.5.0），消除90%代码重复
+- 重新定义FileUploadTool为文件索引管理工具（v1.5.0），不处理文件上传（由协议层处理）
+- 删除重复工具，工具总数从7个减少到5个（v1.5.0）
+- 添加混合检索策略原则（v1.5.1），要求semantic_search实施精确/模糊/语义三层检索
 
 ## 技术约束
 
@@ -122,17 +190,28 @@
 - **版本控制**: 每个阶段完成并通过测试后 MUST git 提交版本
 - **文件访问**: MUST 使用统一的路径白名单控制，配置在 config.yaml 的 file_access.allowed_paths
 - **路径验证**: MUST 防止路径遍历攻击（../ 规范化），MUST 验证 glob 模式
-- **自动索引**: MUST 支持按需索引，RAG 工具 MUST 在首次访问白名单文件时自动创建索引
+- **自动索引**: MUST 支持按需索引，semantic_search 工具 MUST 在首次访问白名单文件时自动创建索引
 - **索引存储**: MUST 将向量索引持久化到 storage/vectors/ 目录
 - **多层防御**: MUST 实现白名单、黑名单、大小限制、内容类型验证等多层安全机制
 - **审计日志**: MUST 记录所有文件访问、索引创建和工具调用操作
+- **结构化错误**: 工具执行失败MUST返回ToolExecutionResult，包含ErrorType、suggested_fix、retry_able字段
 - **RDT协议**: MUST 实现基于UDP的可靠数据传输，包括滑动窗口（窗口大小5）、超时重传（0.1秒）、CRC16校验和累积ACK
 - **多协议路由**: file_download工具 MUST 根据client_type自动选择RDT/HTTP/NPLT协议，优先协议不可用时MUST降级到NPLT
-- **Session管理**: Session对象 MUST 包含client_type字段（cli/web/desktop），默认值为"cli"
+- **Session管理**: Session对象 MUST 包含client_type字段（cli/web/desktop）、uploaded_files字段（List[Dict]）、upload_state字段（Dict）
+- **文件上传支持**: MUST 支持文件+用户说明同时发送（CLI: /upload filepath 用户说明，Web: 上传按钮+文本框）
+- **文件引用格式**: 用户文本MUST附加file_ref标记（[file_ref:{file_id}]），Agent通过Session.get_uploaded_file()获取文件信息
+- **工具职责分离**: Agent工具MUST不处理实际数据传输，协议层（NPLT/RDT/HTTP）负责文件上传/下载的实际数据传输
+- **工具数量控制**: 工具总数SHOULD控制在5-7个范围内，功能重复的工具MUST合并
+- **代码复用**: 功能相似的工具MUST通过继承提取公共逻辑，代码重复率MUST控制在20%以下
+- **混合检索**: semantic_search工具MUST实施精确匹配、模糊匹配、语义检索三层策略，MUST返回match_type字段
+- **检索优先级**: 精确匹配（similarity=1.0）→ 模糊匹配（关键词/前缀/通配符）→ 语义检索（向量相似度）
+- **检索范围过滤**: semantic_search工具MUST支持scope参数（all/system/uploads），控制检索范围
+- **结果去重排序**: 多层检索结果MUST合并去重，按相似度排序返回top_k结果
 - **客户端类型**: 当前阶段 ONLY 实现CLI客户端（client_type="cli"），Web和Desktop客户端实现推迟到后续阶段
 - **Desktop客户端**: Desktop客户端MUST使用Python GUI框架（Tkinter/PyQt/PySide），MUST支持完整RDT协议UDP通信
 - **数据传输格式**: 实时聊天消息MUST使用纯文本，历史记录批量传输MUST使用JSON格式（保留tool_calls、timestamp等结构化数据）
 - **协议文档**: 协议格式、消息流和调用链路MUST记录在docs/目录（message-flow-analysis.md、protocol-call-chain.md）
+- **工具设计文档**: 工具清单、职责边界、输入输出格式MUST记录在docs/目录（agent_complete_specification.md）
 
 ## 测试要求
 
@@ -151,6 +230,20 @@
 - **协议降级测试**: MUST 测试RDT不可用时自动降级到NPLT协议
 - **文件传输测试**: MUST 测试CLI客户端使用RDT协议完整传输文件（上传、下载、校验）
 - **数据传输格式测试**: MUST 测试实时聊天使用纯文本格式，历史记录使用JSON格式并保留完整结构化数据
+- **文件上传测试**: MUST 测试文件+用户说明同时发送，验证自动索引和Session文件记录
+- **文件引用测试**: MUST 测试自然语言文件引用（"这个文件"、"这些文件"、"之前上传的"）
+- **工具合并测试**: MUST 测试semantic_search工具同时支持系统文档和用户文件检索（scope参数）
+- **工具职责测试**: MUST 测试file_upload工具仅管理索引，不参与实际文件上传
+- **结构化错误测试**: MUST 测试工具返回结构化错误（ErrorType、suggested_fix、retry_able）
+- **自我修正测试**: MUST 测试Agent根据错误提示进行自我修正和重试
+- **混合检索测试**: MUST 测试semantic_search三层检索策略（精确匹配、模糊匹配、语义检索）
+- **精确匹配测试**: MUST 测试查询"config.yaml"时直接返回精确匹配（similarity=1.0，match_type=exact_filename）
+- **模糊匹配测试**: MUST 测试查询"config"时返回模糊匹配结果（config.yaml、config.json、config.yml）
+- **语义检索测试**: MUST 测试查询"数据库配置在哪里"时使用向量语义检索返回相关文档
+- **检索优先级测试**: MUST 测试精确匹配优先级高于模糊匹配，模糊匹配优先级高于语义检索
+- **match_type字段测试**: MUST 测试检索结果包含match_type字段（exact_filename/fuzzy_filename/semantic）
+- **scope过滤测试**: MUST 测试scope参数（all/system/uploads）正确过滤检索范围
+- **结果去重测试**: MUST 测试多层检索结果合并去重，不返回重复文件
 
 ## 治理
 
@@ -176,5 +269,8 @@
 - 所有功能规范 MUST 与章程约束保持一致
 - 所有实施计划 MUST 包含章程合规检查
 - 任何偏离原则的决定 MUST 明确记录理由
+- 工具设计变更 MUST 经过设计评审，确认是否符合工具职责单一原则
+- 新增工具 MUST 评估是否与现有工具重复，是否可以通过扩展现有工具实现
+- 文件检索工具 MUST 验证是否实施混合检索策略（精确/模糊/语义三层）
 
-**版本**: 1.4.2 | **批准日期**: 2025-12-28 | **最后修正**: 2025-12-31
+**版本**: 1.5.1 | **批准日期**: 2025-12-28 | **最后修正**: 2025-12-31
