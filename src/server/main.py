@@ -10,15 +10,15 @@ import signal
 import sys
 from pathlib import Path
 
-from ..llm.zhipu import ZhipuProvider
-from ..storage.vector_store import VectorStore
-from ..storage.history import SessionManager
-from ..tools.command import CommandTool
-from ..tools.monitor import MonitorTool
-from ..tools.rag import RAGTool
-from ..utils.config import AppConfig
-from ..utils.logger import get_server_logger
-from ..protocols.nplt import MessageType
+from llm.zhipu import ZhipuProvider
+from storage.vector_store import VectorStore
+from storage.history import SessionManager
+from tools.command import CommandTool
+from tools.monitor import MonitorTool
+from tools.semantic_search import SemanticSearchTool
+from utils.config import AppConfig
+from utils.logger import get_server_logger
+from protocols.nplt import MessageType
 from .agent import ReActAgent
 from .nplt_server import NPLTServer, Session
 from .rdt_server import RDTServer
@@ -91,7 +91,7 @@ class Server:
                 tools={
                     "command_executor": CommandTool(),
                     "sys_monitor": MonitorTool(),
-                    "rag_search": RAGTool(self.llm_provider, self.vector_store)
+                    "semantic_search": SemanticSearchTool(self.llm_provider, self.vector_store)
                 },
                 max_tool_rounds=5,
                 tool_timeout=5

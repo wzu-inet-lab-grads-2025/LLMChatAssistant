@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime
 
+import pytest
+
 # 添加项目根目录到路径
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
@@ -249,7 +251,7 @@ class BaseCLITest:
 
     def measure_time(self, func, *args, **kwargs) -> tuple:
         """
-        测量函数执行时间
+        测量函数执行时间（同步版本）
 
         Args:
             func: 要测量的函数
@@ -261,6 +263,24 @@ class BaseCLITest:
         """
         start_time = time.time()
         result = func(*args, **kwargs)
+        end_time = time.time()
+        elapsed = end_time - start_time
+        return result, elapsed
+
+    async def measure_time_async(self, coro, *args, **kwargs) -> tuple:
+        """
+        测量异步函数执行时间
+
+        Args:
+            coro: 要测量的协程函数
+            *args: 函数参数
+            **kwargs: 函数关键字参数
+
+        Returns:
+            (执行结果, 执行时间秒)
+        """
+        start_time = time.time()
+        result = await coro(*args, **kwargs)
         end_time = time.time()
         elapsed = end_time - start_time
         return result, elapsed
@@ -316,6 +336,106 @@ class BaseCLITest:
             shutil.rmtree(self.temp_dir)
             print(f"✓ 已清理临时文件: {self.temp_dir}")
 
+    async def check_server_status(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT):
+        """检查服务器状态"""
+        running = await self._is_server_running(host, port)
+        if running:
+            return {"host": host, "port": port, "running": True}
+        return None
+
+    async def send_chat_message(self, client, message: str) -> str:
+        """发送聊天消息并返回响应"""
+        # 这里需要调用实际的客户端方法
+        # 暂时返回模拟响应，需要根据实际客户端实现调整
+        if hasattr(client, 'send_message'):
+            return await client.send_message(message)
+        elif hasattr(client, 'chat'):
+            return await client.chat(message)
+        else:
+            raise NotImplementedError("客户端不支持send_message或chat方法")
+
+    async def stream_chat_message(self, client, message: str):
+        """流式发送聊天消息"""
+        if hasattr(client, 'stream_message'):
+            async for chunk in client.stream_message(message):
+                yield chunk
+        else:
+            # 如果不支持流式，回退到普通消息
+            response = await self.send_chat_message(client, message)
+            yield response
+
+    async def upload_file(self, client, filepath: str) -> dict:
+        """上传文件"""
+        if hasattr(client, 'upload_file'):
+            return await client.upload_file(filepath)
+        else:
+            # 临时模拟实现
+            return {"success": False, "error": "客户端不支持upload_file方法"}
+
+    async def download_file(self, client, token: str, save_path: str) -> dict:
+        """下载文件"""
+        if hasattr(client, 'download_file'):
+            return await client.download_file(token, save_path)
+        else:
+            # 临时模拟实现
+            return {"success": False, "error": "客户端不支持download_file方法"}
+
+    async def list_sessions(self, client) -> list:
+        """列出所有会话"""
+        if hasattr(client, 'list_sessions'):
+            return await client.list_sessions()
+        else:
+            return []
+
+    async def create_session(self, client, name: str) -> dict:
+        """创建新会话"""
+        if hasattr(client, 'create_session'):
+            return await client.create_session(name)
+        else:
+            return {"success": False, "error": "客户端不支持create_session方法"}
+
+    async def switch_session(self, client, session_id: str) -> dict:
+        """切换会话"""
+        if hasattr(client, 'switch_session'):
+            return await client.switch_session(session_id)
+        else:
+            return {"success": False, "error": "客户端不支持switch_session方法"}
+
+    async def delete_session(self, client, session_id: str) -> dict:
+        """删除会话"""
+        if hasattr(client, 'delete_session'):
+            return await client.delete_session(session_id)
+        else:
+            return {"success": False, "error": "客户端不支持delete_session方法"}
+
+    async def get_history(self, client, offset: int = 0, limit: int = None) -> list:
+        """获取历史记录"""
+        if hasattr(client, 'get_history'):
+            return await client.get_history(offset=offset, limit=limit)
+        else:
+            return []
+
+    async def clear_history(self, client) -> dict:
+        """清空历史记录"""
+        if hasattr(client, 'clear_history'):
+            return await client.clear_history()
+        else:
+            return {"success": False, "error": "客户端不支持clear_history方法"}
+
+    async def switch_model(self, client, model: str) -> dict:
+        """切换模型"""
+        if hasattr(client, 'switch_model'):
+            return await client.switch_model(model)
+        else:
+            return {"success": False, "error": "客户端不支持switch_model方法"}
+
+    async def get_current_model(self, client) -> str:
+        """获取当前模型"""
+        if hasattr(client, 'get_current_model'):
+            return await client.get_current_model()
+        else:
+            return "unknown"
+
 
 # 异步测试基类
 class AsyncBaseCLITest(BaseCLITest):
@@ -334,10 +454,3 @@ class AsyncBaseCLITest(BaseCLITest):
     async def teardown_method(self, method):
         """异步测试方法清理"""
         await super().teardown_method(method)
-
-
-# 导入 pytest（仅用于标记）
-try:
-    import pytest
-except ImportError:
-    pytest = None
