@@ -20,7 +20,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from base import BaseCLITest
-from fixtures.test_data import TestDataGenerator
+from src.client.tests.fixtures.test_data import DataFileGenerator
 
 
 class TestNetworkInterruption(BaseCLITest):

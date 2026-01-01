@@ -10,7 +10,7 @@ from typing import List, Dict, Any
 import json
 
 
-class TestDataGenerator:
+class DataFileGenerator:
     """
     测试数据生成器
 
@@ -336,7 +336,7 @@ LLMChatAssistant 是一个基于大语言模型的智能运维助手。
 
 
 # 便捷函数
-def create_standard_test_files(base_dir: str = None) -> TestDataGenerator:
+def create_standard_test_files(base_dir: str = None) -> DataFileGenerator:
     """
     创建标准测试文件集
 
@@ -346,7 +346,7 @@ def create_standard_test_files(base_dir: str = None) -> TestDataGenerator:
     Returns:
         测试数据生成器实例
     """
-    gen = TestDataGenerator(base_dir)
+    gen = DataFileGenerator(base_dir)
 
     # 创建标准文件
     gen.create_config_file()

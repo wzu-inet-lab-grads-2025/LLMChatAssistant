@@ -16,7 +16,7 @@ import hashlib
 from pathlib import Path
 from datetime import datetime
 
-from tests.base import BaseCLITest
+from src.client.tests.base import BaseCLITest
 from tests.fixtures.test_data import TestDataGenerator
 
 

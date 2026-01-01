@@ -14,7 +14,7 @@ import pytest
 import asyncio
 import json
 from typing import Optional, Dict, Any
-from tests.base import BaseCLITest
+from src.client.tests.base import BaseCLITest
 
 
 class TestSessionManagement(BaseCLITest):

@@ -6,7 +6,7 @@ Constitution: 100% 真实测试，禁止使用 mock
 import pytest
 import asyncio
 import json
-from tests.base import BaseCLITest
+from src.client.tests.base import BaseCLITest
 from protocols.nplt import MessageType
 
 

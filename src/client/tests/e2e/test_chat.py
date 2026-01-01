@@ -13,7 +13,7 @@ import pytest
 import asyncio
 import json
 from typing import List
-from tests.base import BaseCLITest
+from src.client.tests.base import BaseCLITest
 
 
 class TestChat(BaseCLITest):

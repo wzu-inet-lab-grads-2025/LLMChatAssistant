@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Optional
 import json
-from ..protocols.nplt import MessageType, NPLTMessage
-from ..utils.logger import get_client_logger
+from src.protocols.nplt import MessageType, NPLTMessage
+from src.utils.logger import get_client_logger
 from .ui import ClientUI
 
 
