@@ -1,0 +1,22 @@
+# CLI客户端配置文件示例
+
+# 服务器连接配置
+server:
+  host: "127.0.0.1"
+  port: 9999
+  rdt_port: 9998
+  timeout: 30
+  auto_reconnect: true
+  max_retries: 3
+
+# 客户端配置
+client:
+  default_model: "glm-4-flash"
+  max_file_size: 10485760  # 10MB
+  log_level: "INFO"
+
+# UI配置
+ui:
+  terminal_type: "auto"  # auto | vscode | standard
+  stream_speed: 0.05     # 流式输出延迟（秒）
+  enable_colors: true
