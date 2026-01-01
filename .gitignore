@@ -65,6 +65,19 @@ test_*.py
 demo_*.py
 diagnose_*.py
 
+# Client-specific ignores
+clients/cli/config/config.yaml
+clients/desktop/dist/
+clients/desktop/build/
+*.exe
+*.spec
+
+# Reports and issues (keep templates, ignore generated)
+reports/*.md
+!reports/.gitkeep
+issues/*.md
+!issues/.gitkeep
+
 # Temporary files
 *.tmp
 *.bak

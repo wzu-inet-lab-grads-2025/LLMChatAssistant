@@ -1,0 +1,22 @@
+# LLMChatAssistant 服务器配置
+server:
+  host: "0.0.0.0"
+  port: 9999
+  rdt_port: 9998
+
+llm:
+  provider: "zhipuai"
+  model: "glm-4-flash"
+  api_key_env: "ZHIPU_API_KEY"
+
+file_access:
+  allowed_paths:
+    - "."
+    - "/var/log/*.log"
+  forbidden_patterns:
+    - "*/.env"
+    - "*/.ssh/*"
+
+logging:
+  level: "INFO"
+  file: "logs/server.log"
