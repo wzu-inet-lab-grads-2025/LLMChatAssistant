@@ -56,9 +56,9 @@
 - [ ] T014 [P] 在 clients/cli/tests/fixtures/test_files.py 中准备测试文件数据 (各种大小的文本文件，用于文件上传测试)
 - [ ] T015 在 clients/cli/tests/helpers/assertions.py 中创建自定义断言助手 (验证API调用、协议格式、响应时间等)
 - [ ] T016 [P] 在 clients/cli/tests/helpers/validators.py 中创建数据验证助手 (验证消息格式、文件完整性、会话状态等)
-- [ ] T017 创建测试工具函数 clients/cli/tests/utils/test_utils.py (测量响应时间、记录测试日志、生成测试报告等)
-- [ ] T018 [P] 配置日志记录和测试报告输出 (日志写入 logs 文件夹，遵循章程: 文档与可追溯性)
-- [ ] T019 创建测试报告模板 reports/templates/validation_report_template.md (包含功能覆盖率、问题分类、严重程度分级)
+- [X] T017 创建测试工具函数 clients/cli/tests/utils/test_utils.py (测量响应时间、记录测试日志、生成测试报告等)
+- [X] T018 [P] 配置日志记录和测试报告输出 (日志写入 logs 文件夹，遵循章程: 文档与可追溯性)
+- [X] T019 创建测试报告模板 reports/templates/validation_report_template.md (包含功能覆盖率、问题分类、严重程度分级)
 
 ---
 
