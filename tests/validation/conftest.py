@@ -23,6 +23,10 @@ def pytest_addoption(parser):
 # 配置测试日志
 def pytest_configure(config):
     """Pytest配置钩子"""
+    # 首先加载 .env 文件
+    from dotenv import load_dotenv
+    load_dotenv()
+
     # 验证环境变量
     if not os.getenv("ZHIPU_API_KEY"):
         raise pytest.UsageError(
