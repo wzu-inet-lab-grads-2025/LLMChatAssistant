@@ -13,7 +13,7 @@ from enum import Enum
 from typing import Callable, Dict, Optional, Tuple
 
 from server.protocols.nplt import MessageType, NPLTMessage
-from shared.storage.history import ConversationHistory, SessionManager
+from server.storage.history import ConversationHistory, SessionManager
 
 
 class SessionState(Enum):
@@ -554,13 +554,25 @@ class NPLTServer:
                         filename=filename,
                         storage_dir="storage/uploads"
                     )
-                    
+
                     print(f"[INFO] [SERVER] 文件已保存: {uploaded_file.file_id}")
-                    
+
+                    # 将文件元数据添加到 session（关键修复！）
+                    session.add_uploaded_file({
+                        "file_id": uploaded_file.file_id,
+                        "filename": uploaded_file.filename,
+                        "file_path": uploaded_file.storage_path,
+                        "uploaded_at": uploaded_file.uploaded_at,
+                        "size": uploaded_file.size,
+                        "indexed": False  # 尚未索引
+                    })
+
+                    print(f"[INFO] [SERVER] 文件元数据已注册到 session: {session.session_id}")
+
                     # 发送成功确认
                     await session.send_message(
                         MessageType.CHAT_TEXT,
-                        f"文件上传成功: {filename}".encode('utf-8')
+                        f"文件上传成功: {filename} (ID: {uploaded_file.file_id})".encode('utf-8')
                     )
                     
                 except Exception as e:

@@ -10,12 +10,12 @@ import signal
 import sys
 from pathlib import Path
 
-from shared.llm.zhipu import ZhipuProvider
-from shared.storage.vector_store import VectorStore
-from shared.storage.history import SessionManager
-from src.tools.command import CommandTool
-from src.tools.monitor import MonitorTool
-from src.tools.semantic_search import SemanticSearchTool
+from server.llm.zhipu import ZhipuProvider
+from server.storage.vector_store import VectorStore
+from server.storage.history import SessionManager
+from server.tools.command import CommandTool
+from server.tools.monitor import MonitorTool
+from server.tools.semantic_search import SemanticSearchTool
 from shared.utils.config import AppConfig
 from shared.utils.logger import get_server_logger
 from server.protocols.nplt import MessageType
@@ -212,6 +212,9 @@ class Server:
 
             # 添加助手响应到历史
             session.conversation_history.add_message("assistant", full_response)
+
+            # 保存对话历史到磁盘
+            session.conversation_history.save()
 
             # T091: 集成会话命名 - 在第 3 轮对话后触发 AI 自动命名
             message_count = len(session.conversation_history.messages)
