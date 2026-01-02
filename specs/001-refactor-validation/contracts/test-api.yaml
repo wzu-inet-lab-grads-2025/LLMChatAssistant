@@ -1,0 +1,456 @@
+# 测试API接口规范
+
+**功能**: 重构后系统验证
+**版本**: 1.0
+**日期**: 2026-01-02
+
+## 概述
+
+本文档定义了验证测试框架的内部API接口规范。注意：本功能不涉及新的外部API，而是定义测试代码和被测试系统之间的交互契约。
+
+## 测试Fixture API
+
+### fresh_agent fixture
+
+提供全新的Agent实例，用于测试Agent功能。
+
+**接口**:
+
+```python
+@pytest.fixture
+async def fresh_agent() -> ReActAgent:
+    """创建新的Agent实例"""
+    from server.agent import ReActAgent
+    from server.llm.zhipu import ZhipuProvider
+
+    llm_provider = ZhipuProvider()
+    agent = ReActAgent(llm_provider=llm_provider)
+
+    yield agent
+
+    # 清理资源
+```
+
+**使用示例**:
+
+```python
+@pytest.mark.asyncio
+async def test_agent_functionality(fresh_agent):
+    response = await fresh_agent.chat("你好")
+    assert response is not None
+```
+
+### fresh_history fixture
+
+提供全新的对话历史实例，用于测试历史记录功能。
+
+**接口**:
+
+```python
+@pytest.fixture
+def fresh_history() -> ConversationHistory:
+    """创建新的对话历史"""
+    from server.storage.history import ConversationHistory
+    from uuid import uuid4
+
+    session_id = f"test-{uuid4()}"
+    history = ConversationHistory.create_new(session_id)
+
+    yield history
+
+    # 清理：删除测试历史文件
+    history_file = Path(f"storage/history/{session_id}.json")
+    if history_file.exists():
+        history_file.unlink()
+```
+
+**使用示例**:
+
+```python
+def test_history_save_and_load(fresh_history):
+    fresh_history.add_message("user", "测试消息")
+    fresh_history.save()
+
+    loaded = ConversationHistory.load(fresh_history.session_id)
+    assert len(loaded.messages) == 1
+```
+
+## 测试辅助函数API
+
+### Agent测试辅助函数
+
+**函数**:
+
+```python
+async def send_chat_message(agent: ReActAgent, message: str) -> str:
+    """
+    发送聊天消息并获取响应
+
+    Args:
+        agent: Agent实例
+        message: 用户消息
+
+    Returns:
+        Agent响应文本
+
+    Raises:
+        AssertionError: 如果响应为空或无效
+    """
+    response = await agent.chat(message)
+    assert response is not None, "Agent响应为空"
+    assert len(response) > 0, "Agent响应内容为空"
+    return response
+```
+
+### 文件操作测试辅助函数
+
+**函数**:
+
+```python
+async def upload_test_file(client, file_path: str, description: str = "") -> bool:
+    """
+    上传测试文件
+
+    Args:
+        client: 客户端实例
+        file_path: 文件路径
+        description: 文件描述（可选）
+
+    Returns:
+        上传是否成功
+    """
+    # 实现文件上传逻辑
+    pass
+
+async def download_test_file(client, file_path: str) -> bytes:
+    """
+    下载测试文件
+
+    Args:
+        client: 客户端实例
+        file_path: 文件路径
+
+    Returns:
+        文件内容
+    """
+    # 实现文件下载逻辑
+    pass
+
+def verify_file_integrity(original: bytes, downloaded: bytes) -> bool:
+    """
+    验证文件完整性
+
+    Args:
+        original: 原始文件内容
+        downloaded: 下载的文件内容
+
+    Returns:
+        是否完整
+    """
+    import hashlib
+    return hashlib.md5(original).digest() == hashlib.md5(downloaded).digest()
+```
+
+### 断言辅助函数
+
+**函数**:
+
+```python
+def assert_response_time(duration: float, max_duration: float, operation: str):
+    """
+    断言响应时间在合理范围内
+
+    Args:
+        duration: 实际耗时（秒）
+        max_duration: 最大允许耗时（秒）
+        operation: 操作名称（用于错误消息）
+
+    Raises:
+        AssertionError: 如果超时
+    """
+    assert duration <= max_duration, f"{operation}耗时{duration:.2f}秒，超过最大限制{max_duration}秒"
+
+def assert_not_empty(response: Any, message: str = "响应为空"):
+    """
+    断言响应非空
+
+    Args:
+        response: 响应对象
+        message: 错误消息
+
+    Raises:
+        AssertionError: 如果响应为空
+    """
+    assert response is not None, message
+    if isinstance(response, (str, list, dict)):
+        assert len(response) > 0, message
+```
+
+## 测试报告API
+
+### 报告生成器
+
+**函数**:
+
+```python
+def generate_test_report(results: List[ValidationResult]) -> ValidationReport:
+    """
+    生成测试报告
+
+    Args:
+        results: 测试结果列表
+
+    Returns:
+        验证报告对象
+    """
+    report = ValidationReport(
+        report_id=f"vr-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+        report_type="comprehensive",
+        start_time=...,
+        end_time=...,
+        ...
+    )
+    return report
+
+def save_report_html(report: ValidationReport, filepath: str):
+    """
+    保存HTML格式报告
+
+    Args:
+        report: 验证报告
+        filepath: 输出文件路径
+    """
+    # 生成HTML报告
+    pass
+
+def save_report_json(report: ValidationReport, filepath: str):
+    """
+    保存JSON格式报告
+
+    Args:
+        report: 验证报告
+        filepath: 输出文件路径
+    """
+    import json
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(report.to_dict(), f, ensure_ascii=False, indent=2)
+```
+
+## Pytest配置API
+
+### 命令行参数
+
+**参数**:
+
+```python
+def pytest_addoption(parser):
+    """添加pytest命令行选项"""
+    parser.addoption(
+        "--auto-confirm",
+        action="store_true",
+        default=False,
+        help="自动确认测试通过，不等待用户输入"
+    )
+    parser.addoption(
+        "--priority",
+        action="append",
+        choices=["P1", "P2", "P3"],
+        help="按优先级运行测试（可多次指定）"
+    )
+    parser.addoption(
+        "--report-format",
+        choices=["html", "json", "both"],
+        default="both",
+        help="测试报告格式"
+    )
+```
+
+### Pytest钩子
+
+**钩子函数**:
+
+```python
+def pytest_configure(config):
+    """
+    Pytest配置钩子
+
+    功能：
+    1. 验证ZHIPU_API_KEY环境变量
+    2. 配置日志系统
+    3. 初始化测试环境
+    """
+    pass
+
+def pytest_collection_modifyitems(config, items):
+    """
+    修改测试收集项
+
+    功能：
+    1. 根据优先级标记测试
+    2. 重新排序测试（P1 → P2 → P3）
+    """
+    priority_map = {"P1": 0, "P2": 1, "P3": 2}
+    items.sort(key=lambda item: priority_map.get(item.get_closest_marker("priority").args[0], 99))
+
+def pytest_html_results_summary(prefix, summary, postfix):
+    """
+    自定义HTML报告摘要
+    """
+    # 添加自定义摘要信息
+    pass
+```
+
+## 测试标记API
+
+### Pytest标记定义
+
+```python
+# 优先级标记
+pytest.mark.P1  # 高优先级测试（Agent、数据传输）
+pytest.mark.P2  # 中优先级测试（文件操作、检索）
+pytest.mark.P3  # 低优先级测试（历史记录）
+
+# 测试类型标记
+pytest.mark.functional   # 功能测试
+pytest.mark.boundary     # 边界测试
+pytest.mark.error        # 错误处理测试
+pytest.mark.performance  # 性能测试
+
+# 速度标记
+pytest.mark.slow         # 慢速测试（涉及真实API调用）
+pytest.mark.fast         # 快速测试（本地操作）
+
+# 集成级别标记
+pytest.mark.unit         # 单元测试
+pytest.mark.integration  # 集成测试
+pytest.mark.e2e          # 端到端测试
+```
+
+**使用示例**:
+
+```python
+@pytest.mark.asyncio
+@pytest.mark.P1
+@pytest.mark.functional
+async def test_agent_simple_chat(fresh_agent):
+    """P1优先级：简单对话功能测试"""
+    response = await fresh_agent.chat("你好")
+    assert "你好" in response or "Hello" in response
+```
+
+## 测试执行API
+
+### 命令行示例
+
+```bash
+# 运行所有验证测试
+pytest tests/validation/
+
+# 只运行P1测试
+pytest tests/validation/ -m P1
+
+# 运行特定测试文件
+pytest tests/validation/test_agent.py
+
+# 生成HTML和JSON报告
+pytest tests/validation/ --report-format both
+
+# 自动确认模式（CI/CD）
+pytest tests/validation/ --auto-confirm
+
+# 详细输出
+pytest tests/validation/ -v
+
+# 停在第一个失败
+pytest tests/validation/ -x
+
+# 并行运行（如安装了pytest-xdist）
+pytest tests/validation/ -n auto
+```
+
+## 错误处理API
+
+### 异常定义
+
+```python
+class ValidationTestError(Exception):
+    """验证测试基础异常"""
+    pass
+
+class APICallError(ValidationTestError):
+    """API调用失败"""
+    def __init__(self, message: str, status_code: int = None, response: str = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.response = response
+
+class FileTransferError(ValidationTestError):
+    """文件传输失败"""
+    def __init__(self, message: str, file_path: str = None):
+        super().__init__(message)
+        self.file_path = file_path
+
+class AssertionHelper:
+    """断言辅助类"""
+
+    @staticmethod
+    def assert_api_success(response: dict):
+        """断言API调用成功"""
+        if not response.get("success", False):
+            raise APICallError(
+                message=f"API调用失败: {response.get('error', 'Unknown error')}",
+                status_code=response.get("status_code"),
+                response=str(response)
+            )
+
+    @staticmethod
+    def assert_file_exists(file_path: str):
+        """断言文件存在"""
+        if not Path(file_path).exists():
+            raise FileTransferError(
+                message=f"文件不存在: {file_path}",
+                file_path=file_path
+            )
+```
+
+## 附录: 接口使用完整示例
+
+```python
+"""
+完整的测试示例：Agent简单对话功能测试
+"""
+
+import pytest
+from tests.validation.helpers.assertions import AssertionHelper
+
+@pytest.mark.asyncio
+@pytest.mark.P1
+@pytest.mark.functional
+async def test_agent_simple_chat(fresh_agent):
+    """
+    测试Agent简单对话功能
+
+    Given: 后端服务已启动
+    When: 发送简单对话请求"你好"
+    Then: 系统返回正确格式的响应且内容符合预期
+    """
+    # Given: 前置条件
+    test_message = "你好，请介绍一下你自己"
+
+    # When: 执行动作
+    import time
+    start_time = time.time()
+    response = await fresh_agent.chat(test_message)
+    duration = time.time() - start_time
+
+    # Then: 验证结果
+    AssertionHelper.assert_not_empty(response, "Agent响应为空")
+    AssertionHelper.assert_response_time(duration, 15.0, "简单对话")
+
+    # 验证响应内容相关
+    assert any(keyword in response for keyword in ["智能", "助手", "AI", "助手"]), \
+        f"响应内容不相关: {response}"
+
+    # 记录测试结果
+    print(f"✓ 测试通过: 响应长度{len(response)}字符，耗时{duration:.2f}秒")
+```

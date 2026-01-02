@@ -14,9 +14,9 @@ import hashlib
 import pytest
 import pytest_asyncio
 
-from src.protocols.rdt import ACKPacket, RDTPacket
-from src.server.rdt_server import RDTServer, RDTSession
-from src.client.rdt_client import RDTClient, RDTClientSession
+from shared.protocols.rdt import ACKPacket, RDTPacket
+from server.rdt_server import RDTServer, RDTSession
+from clients.cli.rdt_client import RDTClient, RDTClientSession
 
 
 @pytest.mark.skipif(

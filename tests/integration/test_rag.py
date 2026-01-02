@@ -8,9 +8,9 @@ RAG 检索集成测试
 import os
 import pytest
 
-from src.llm.zhipu import ZhipuProvider
-from src.storage.vector_store import VectorStore, VectorIndex
-from src.tools.rag import RAGTool
+from server.llm.zhipu import ZhipuProvider
+from server.storage.vector_store import VectorStore, VectorIndex
+from server.tools.rag import RAGTool
 
 
 @pytest.mark.skipif(

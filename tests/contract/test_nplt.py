@@ -7,7 +7,7 @@ NPLT 协议编解码测试
 
 import pytest
 
-from src.protocols.nplt import MessageType, NPLTMessage
+from shared.protocols.nplt import MessageType, NPLTMessage
 
 
 class TestNPLTEncoding:
@@ -24,15 +24,16 @@ class TestNPLTEncoding:
         encoded = message.encode()
 
         # 验证编码结果
-        assert len(encoded) == 4 + 13  # Header (4) + Data (13)
+        assert len(encoded) == 5 + 13  # Header (5) + Data (13)
         assert encoded[0] == 0x01  # CHAT_TEXT
         assert encoded[1] == 0x00  # Seq high byte
         assert encoded[2] == 0x01  # Seq low byte
-        assert encoded[3] == 13    # Length
+        assert encoded[3] == 0    # Length high byte
+        assert encoded[4] == 13   # Length low byte
 
     def test_encode_max_data_length(self):
         """测试编码最大长度数据"""
-        max_data = b"X" * 255
+        max_data = b"X" * 65535
         message = NPLTMessage(
             type=MessageType.CHAT_TEXT,
             seq=0,
@@ -41,8 +42,9 @@ class TestNPLTEncoding:
 
         encoded = message.encode()
 
-        assert len(encoded) == 4 + 255
-        assert encoded[3] == 255  # Max length
+        assert len(encoded) == 5 + 65535
+        assert encoded[3] == 255  # Length high byte
+        assert encoded[4] == 255  # Length low byte
 
     def test_encode_empty_data(self):
         """测试编码空数据"""
@@ -54,8 +56,9 @@ class TestNPLTEncoding:
 
         encoded = message.encode()
 
-        assert len(encoded) == 4  # Only header
-        assert encoded[3] == 0  # Zero length
+        assert len(encoded) == 5  # Only header
+        assert encoded[3] == 0  # Length high byte
+        assert encoded[4] == 0  # Length low byte
 
     def test_encode_exceeds_max_length(self):
         """测试编码超过最大长度的数据"""
@@ -63,7 +66,7 @@ class TestNPLTEncoding:
             NPLTMessage(
                 type=MessageType.CHAT_TEXT,
                 seq=0,
-                data=b"X" * 256
+                data=b"X" * 65536
             ).encode()
 
 
@@ -76,7 +79,7 @@ class TestNPLTDecoding:
         encoded = bytes([
             0x01,       # Type: CHAT_TEXT
             0x00, 0x01, # Seq: 1
-            0x05        # Length: 5
+            0x00, 0x05  # Length: 5
         ]) + b"Hello"
 
         message = NPLTMessage.decode(encoded)
@@ -90,7 +93,7 @@ class TestNPLTDecoding:
         encoded = bytes([
             0x0A,       # Type: AGENT_THOUGHT
             0x00, 0x02, # Seq: 2
-            0x0B        # Length: 11
+            0x00, 0x0B  # Length: 11
         ]) + b"Thinking..."
 
         message = NPLTMessage.decode(encoded)
@@ -104,7 +107,7 @@ class TestNPLTDecoding:
         encoded = bytes([
             0x0C,       # Type: DOWNLOAD_OFFER
             0x00, 0x03, # Seq: 3
-            0x04        # Length: 4
+            0x00, 0x04  # Length: 4
         ]) + b"file"
 
         message = NPLTMessage.decode(encoded)

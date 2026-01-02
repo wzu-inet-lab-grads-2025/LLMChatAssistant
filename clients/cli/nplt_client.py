@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Optional
 import json
-from clients.cli.protocols.nplt import MessageType, NPLTMessage
+from shared.protocols.nplt import MessageType, NPLTMessage
 from shared.utils.logger import get_client_logger
 from .ui import ClientUI
 
@@ -160,9 +160,10 @@ class NPLTClient:
 
         try:
             # 读取消息头部
+            # 修复：超时时间设为2倍心跳间隔，避免误断
             header = await asyncio.wait_for(
                 self.reader.readexactly(NPLTMessage.HEADER_SIZE),
-                timeout=self.heartbeat_interval + 10
+                timeout=self.heartbeat_interval * 2
             )
 
             # 解码头部获取数据长度
@@ -172,7 +173,7 @@ class NPLTClient:
             if length > 0:
                 data = await asyncio.wait_for(
                     self.reader.readexactly(length),
-                    timeout=5.0
+                    timeout=5.0  # 数据读取超时保持5秒
                 )
             else:
                 data = b""
@@ -243,8 +244,9 @@ class NPLTClient:
                 # 聊天文本消息
                 text = message.data.decode('utf-8', errors='ignore')
 
-                # 忽略心跳
+                # 收到服务器心跳，必须回复
                 if text == "HEARTBEAT":
+                    await self.send_heartbeat()  # 修复：回复心跳给服务器
                     return
 
                 # 检查是否为流式输出结束标记（空消息）

@@ -9,27 +9,27 @@ import struct
 
 import pytest
 
-from src.protocols.nplt import MessageType, NPLTMessage
+from shared.protocols.nplt import MessageType, NPLTMessage
 
 
 class TestNPLTHeaderFormat:
     """NPLT 头部格式测试"""
 
     def test_header_size(self):
-        """测试头部大小为 4 字节"""
-        # Type (1) + Seq (2) + Len (1) = 4 bytes
-        assert NPLTMessage.HEADER_SIZE == 4
+        """测试头部大小为 5 字节"""
+        # Type (1) + Seq (2) + Len (2) = 5 bytes
+        assert NPLTMessage.HEADER_SIZE == 5
 
     def test_header_format_string(self):
         """测试头部格式字符串"""
-        # >BHB: big-endian uint8, uint16, uint8
-        expected_format = ">BHB"
+        # >BHH: big-endian uint8, uint16, uint16
+        expected_format = ">BHH"
         assert NPLTMessage.HEADER_FORMAT == expected_format
 
     def test_header_unpacking(self):
         """测试头部解包"""
         # 构造有效头部
-        header_bytes = bytes([0x01, 0x00, 0x01, 0x0B])  # CHAT_TEXT, Seq=1, Len=11
+        header_bytes = bytes([0x01, 0x00, 0x01, 0x00, 0x0B])  # CHAT_TEXT, Seq=1, Len=11
 
         type_val, seq, length = struct.unpack(
             NPLTMessage.HEADER_FORMAT,
@@ -75,8 +75,9 @@ class TestNPLTHeaderFormat:
         )
         encoded = message.encode()
 
-        # Len 应该在第 3 字节
-        assert encoded[3] == 4
+        # Len 应该在第 3-4 字节
+        assert encoded[3] == 0  # Length high byte
+        assert encoded[4] == 4  # Length low byte
 
 
 class TestNPLTByteOrder:
@@ -127,12 +128,12 @@ class TestNPLTDataLength:
     """NPLT 数据长度测试"""
 
     def test_max_data_length(self):
-        """测试最大数据长度为 255 字节"""
-        assert NPLTMessage.MAX_DATA_LENGTH == 255
+        """测试最大数据长度为 65535 字节"""
+        assert NPLTMessage.MAX_DATA_LENGTH == 65535
 
     def test_len_field_max_value(self):
         """测试 Len 字段最大值"""
-        max_data = b"X" * 255
+        max_data = b"X" * 65535
         message = NPLTMessage(
             type=MessageType.CHAT_TEXT,
             seq=0,
@@ -140,12 +141,13 @@ class TestNPLTDataLength:
         )
         encoded = message.encode()
 
-        # Len 字节应该等于 255
-        assert encoded[3] == 255
+        # Len 字段应该等于 65535 (0xFFFF)
+        assert encoded[3] == 255  # High byte
+        assert encoded[4] == 255  # Low byte
 
     def test_total_packet_size_max(self):
         """测试最大数据包大小"""
-        max_data = b"X" * 255
+        max_data = b"X" * 65535
         message = NPLTMessage(
             type=MessageType.CHAT_TEXT,
             seq=0,
@@ -153,8 +155,8 @@ class TestNPLTDataLength:
         )
         encoded = message.encode()
 
-        # 总大小 = Header (4) + Data (255) = 259 bytes
-        assert len(encoded) == 259
+        # 总大小 = Header (5) + Data (65535) = 65540 bytes
+        assert len(encoded) == 65540
 
     def test_total_packet_size_min(self):
         """测试最小数据包大小"""
@@ -165,8 +167,8 @@ class TestNPLTDataLength:
         )
         encoded = message.encode()
 
-        # 总大小 = Header (4) + Data (0) = 4 bytes
-        assert len(encoded) == 4
+        # 总大小 = Header (5) + Data (0) = 5 bytes
+        assert len(encoded) == 5
 
 
 class TestNPLTMessageTypes:
@@ -228,7 +230,7 @@ class TestNPLTMessageValidation:
         msg1 = NPLTMessage(
             type=MessageType.CHAT_TEXT,
             seq=0,
-            data=b"X" * 255
+            data=b"X" * 65535
         )
         assert msg1.validate() is True
 
@@ -239,5 +241,5 @@ class TestNPLTMessageValidation:
             NPLTMessage(
                 type=MessageType.CHAT_TEXT,
                 seq=0,
-                data=b"X" * 256  # 超过限制
+                data=b"X" * 65536  # 超过限制
             ).encode()

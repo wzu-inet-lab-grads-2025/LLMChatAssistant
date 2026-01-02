@@ -13,9 +13,9 @@ from datetime import datetime
 
 import pytest
 
-from src.storage.files import UploadedFile
-from src.storage.history import ChatMessage, ConversationHistory, ToolCall
-from src.storage.vector_store import SearchResult, VectorIndex, VectorStore
+from server.storage.files import UploadedFile
+from server.storage.history import ChatMessage, ConversationHistory, ToolCall
+from server.storage.vector_store import SearchResult, VectorIndex, VectorStore
 
 
 class TestVectorIndex:

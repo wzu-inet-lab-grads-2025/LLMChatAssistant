@@ -7,9 +7,9 @@
 
 import pytest
 
-from src.tools.base import Tool, ToolExecutionResult
-from src.tools.command import BLACKLIST_CHARS, CommandTool, WHITELIST_COMMANDS
-from src.tools.monitor import MonitorTool
+from server.tools.base import Tool, ToolExecutionResult
+from server.tools.command import BLACKLIST_CHARS, CommandTool, WHITELIST_COMMANDS
+from server.tools.monitor import MonitorTool
 
 
 class TestToolBase:
@@ -273,7 +273,7 @@ class TestCommandToolSecurity:
 
     def test_all_blacklist_chars_blocked(self):
         """测试所有黑名单字符都被阻止"""
-        from src.tools.command import BLACKLIST_CHARS
+        from server.tools.command import BLACKLIST_CHARS
 
         # 测试每个黑名单字符
         for char in BLACKLIST_CHARS:

@@ -26,12 +26,15 @@ from rich.table import Table
 from rich.text import Text
 
 # 尝试导入 prompt_toolkit 以支持更好的中文输入处理
+# prompt_toolkit 能正确处理中文宽字符，解决删除残留问题
 try:
     from prompt_toolkit import PromptSession
     from prompt_toolkit.formatted_text import ANSI
     from prompt_toolkit.patch_stdout import patch_stdout
+
     HAS_PROMPT_TOOLKIT = True
 except ImportError:
+    # 如果没有安装，回退到Rich input
     HAS_PROMPT_TOOLKIT = False
 
 
@@ -177,6 +180,7 @@ class ClientUI:
         self._stop_spinner = False
 
         # 初始化 prompt_toolkit PromptSession（如果可用）
+        # prompt_toolkit 能正确处理中文宽字符，解决删除残留问题
         if HAS_PROMPT_TOOLKIT:
             self.session = PromptSession()
         else:
@@ -293,12 +297,16 @@ class ClientUI:
             self._spinner_task = None
 
         if self.live_display is not None:
+            # 清除内容后停止
             self.live_display.update(Text(""))
             self.live_display.stop()
             self.live_display = None
 
         self.current_spinner = None
         self.is_live = False
+
+        # 强制刷新终端，确保清除所有显示
+        self.console.file.flush()
 
     def _stop_spinner_without_reset(self):
         """清除 Spinner 显示但不重置 is_live 状态
@@ -468,6 +476,9 @@ class ClientUI:
         self._full_content = ""
         self._displayed_content = ""
         self._render_task = None
+
+        # 强制刷新终端，确保清除所有显示
+        self.console.file.flush()
 
     # ========================== 通用输出方法 ==========================
 
@@ -708,7 +719,11 @@ class ClientUI:
         # 清除 Spinner 痕迹
         self.stop_spinner()
 
-        # 如果 prompt_toolkit 可用，使用它来处理输入（更好的中文支持）
+        # 强制刷新终端，清除所有残留显示
+        self.console.file.flush()
+
+        # 如果 prompt_toolkit 可用，使用它来处理输入
+        # prompt_toolkit 能正确处理中文宽字符，解决删除残留问题
         if HAS_PROMPT_TOOLKIT and self.session is not None:
             # 使用 Rich 的 console.capture() 将带 Rich 标签的 prompt 转换为 ANSI 代码
             with self.console.capture() as capture:
@@ -717,9 +732,14 @@ class ClientUI:
             ansi_prompt = capture.get()
 
             # 使用 prompt_toolkit 的 PromptSession 来获取输入
+            # patch_stdout() 确保 Rich 的输出（如流式响应）不会干扰 prompt_toolkit 的输入编辑器
             try:
                 with patch_stdout():
                     user_input = self.session.prompt(ANSI(ansi_prompt))
+
+                # 打印换行符，隔离输入行和后续显示
+                print()  # 这会清除prompt_toolkit输入行的视觉残留
+
                 return user_input.strip()
             except EOFError:
                 return ""

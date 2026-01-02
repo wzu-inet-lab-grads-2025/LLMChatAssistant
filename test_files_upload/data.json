@@ -1,12 +1,10 @@
 {
-  "users": [
-    {"id": 1, "name": "Alice", "email": "alice@example.com"},
-    {"id": 2, "name": "Bob", "email": "bob@example.com"},
-    {"id": 3, "name": "Charlie", "email": "charlie@example.com"}
-  ],
-  "settings": {
-    "theme": "dark",
-    "language": "zh-CN",
-    "notifications": true
-  }
+  "name": "测试数据",
+  "value": 123,
+  "description": "用于验证文件上传下载功能的JSON测试文件",
+  "nested": {
+    "key1": "value1",
+    "key2": "value2"
+  },
+  "array": [1, 2, 3, 4, 5]
 }

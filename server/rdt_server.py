@@ -14,7 +14,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
-from server.protocols.rdt import ACKPacket, RDTPacket
+from shared.protocols.rdt import ACKPacket, RDTPacket
 
 
 class RDTState(Enum):

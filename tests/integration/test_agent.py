@@ -9,14 +9,14 @@ import asyncio
 import os
 import pytest
 
-from src.llm.zhipu import ZhipuProvider
-from src.llm.base import Message
-from src.server.agent import ReActAgent
-from src.storage.history import ConversationHistory
-from src.storage.vector_store import VectorStore
-from src.tools.command import CommandTool
-from src.tools.monitor import MonitorTool
-from src.tools.rag import RAGTool
+from server.llm.zhipu import ZhipuProvider
+from server.llm.base import Message
+from server.agent import ReActAgent
+from server.storage.history import ConversationHistory
+from server.storage.vector_store import VectorStore
+from server.tools.command import CommandTool
+from server.tools.monitor import MonitorTool
+from server.tools.rag import RAGTool
 
 
 @pytest.mark.skipif(
@@ -455,7 +455,7 @@ class TestAgentModelSwitch:
         print(f"✓ 模型已切换: {llm_provider.current_model}")
 
         # 验证聊天 API 使用新模型
-        from src.llm.base import Message
+        from server.llm.base import Message
         messages = [Message(role='user', content='你好')]
 
         response_text = ""
@@ -513,8 +513,8 @@ class TestAgentModelSwitch:
 
     async def test_model_switch_validation(self):
         """测试模型切换验证逻辑（服务器端集成验证）"""
-        from src.server.nplt_server import NPLTServer
-        from src.llm.zhipu import ZhipuProvider
+        from server.nplt_server import NPLTServer
+        from server.llm.zhipu import ZhipuProvider
 
         # 创建服务器
         server = NPLTServer(host="127.0.0.1", port=9999)

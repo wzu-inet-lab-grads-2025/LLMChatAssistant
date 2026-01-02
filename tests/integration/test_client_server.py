@@ -8,9 +8,9 @@
 import asyncio
 import pytest
 
-from src.protocols.nplt import MessageType, NPLTMessage
-from src.server.nplt_server import NPLTServer, Session, SessionState
-from src.client.nplt_client import NPLTClient
+from shared.protocols.nplt import MessageType, NPLTMessage
+from server.nplt_server import NPLTServer, Session, SessionState
+from clients.cli.nplt_client import NPLTClient
 
 
 @pytest.mark.asyncio

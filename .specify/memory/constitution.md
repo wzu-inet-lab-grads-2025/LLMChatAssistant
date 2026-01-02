@@ -1,41 +1,38 @@
 <!--
 同步报告:
 
-版本更改: 1.5.1 → 1.6.0 (MINOR - 添加客户端架构和部署原则)
+版本更改: 1.6.0 → 1.7.0 (MINOR - 添加项目结构原则)
 
 修改的原则: 无
 
 添加的原则:
-- 客户端独立性原则 (Client Independence Principle) - v1.6.0新增
-- 多前端适配器模式原则 (Multi-Frontend Adapter Pattern Principle) - v1.6.0新增
-- 配置驱动部署原则 (Configuration-Driven Deployment Principle) - v1.6.0新增
+- 项目结构原则 (Project Structure Principle) - v1.7.0新增
 
 删除的原则: 无
 
 需要更新的模板:
 - ✅ .specify/memory/constitution.md - 已更新
-- ⚠️ .specify/templates/spec-template.md - MUST添加客户端架构约束部分
-- ⚠️ .specify/templates/plan-template.md - MUST添加客户端架构审查检查项
-- ⚠️ .specify/templates/tasks-template.md - MUST添加客户端重构任务类型
+- ⚠️ .specify/templates/spec-template.md - MUST添加项目结构约束部分
+- ⚠️ .specify/templates/plan-template.md - MUST添加项目结构审查检查项
+- ⚠️ .specify/templates/tasks-template.md - MUST添加目录重构任务类型
 
 审查备注 (2026-01-01):
-- 确定客户端架构：单仓库多包（monorepo）模式
-- 客户端完全独立：独立的协议定义副本（client/protocols/），独立的依赖管理（client/pyproject.toml）
-- 多前端支持：CLI（Python直接运行）、Web（服务器提供）、Desktop（PyInstaller打包.exe）
-- 适配器模式解耦：前端应用层 → 适配器层 → 服务层 → 协议层/核心层
-- 配置驱动部署：通过config.yaml管理服务器连接，支持本地和远程部署
-- 设计原则扩展：职责单一、安全第一、协议分离、客户端独立、多前端支持、配置驱动
+- 确定最终项目结构：前后端分离的monorepo架构
+- server/ - 后端服务器（可独立部署），包含llm/, tools/, storage/, utils/
+- clients/ - 前端客户端（cli/），只包含UI和通信逻辑
+- shared/ - 真正共享的代码（protocols/, utils/）
+- storage/ - 运行时数据目录（非代码）
+- 删除 src/ - 所有功能已迁移到对应位置
+- 关键原则：后端可独立部署、前端轻量级、协议共享、数据存储分离
 
 后续 TODO (更新于 2026-01-01):
-- [PENDING] ⏳ 实施客户端架构重构（Phase 0-9，详见计划文档）
-- [PENDING] ⏳ 创建client/目录结构，包含protocols/、transport/、core/、services/、adapters/、ui/、frontends/、config/
-- [PENDING] ⏳ 复制协议定义到client/protocols/（nplt.py、rdt.py）
-- [PENDING] ⏳ 实现适配器模式（CLIAdapter、DesktopAdapter）
-- [PENDING] ⏳ 添加配置文件管理（client/config/config.yaml）
-- [PENDING] ⏳ 创建PyInstaller打包脚本（scripts/build_desktop.py）
-- [PENDING] ⏳ 编写客户端独立性测试
-- [PENDING] ⏳ 编写多前端一致性测试
-- [PENDING] ⏳ 编写PyInstaller打包测试
+- [PENDING] ⏳ 执行目录结构迁移（src/ → server/）
+- [PENDING] ⏳ 更新所有导入路径（from src.* → from server.*）
+- [PENDING] ⏳ 更新shared/目录结构（保留protocols/和utils/）
+- [PENDING] ⏳ 删除整个src/目录
+- [PENDING] ⏳ 更新pyproject.toml依赖路径
+- [PENDING] ⏳ 验证所有模块导入正确性
+- [PENDING] ⏳ 更新文档和脚本中的路径引用
 -->
 
 # LLMChatAssistant 项目章程
@@ -172,6 +169,149 @@ Agent工具MUST精简且必要，工具总数SHOULD控制在5-7个范围内。�
 - 删除重复工具，工具总数从7个减少到5个（v1.5.0）
 - 添加混合检索策略原则（v1.5.1），要求semantic_search实施精确/模糊/语义三层检索
 
+### 项目结构原则 (Project Structure Principle)
+
+项目 MUST 采用前后端分离的monorepo架构，确保模块职责清晰、部署灵活。项目结构 MUST 遵循以下组织原则：
+
+**1. 后端自包含原则 (Backend Self-Containment Principle)**
+
+server/ 目录 MUST 包含所有后端专用代码，MUST 能够作为完整后端独立部署和运行。server/ 目录结构 MUST 包含：
+- server/main.py - 服务器入口
+- server/agent.py - Agent逻辑
+- server/nplt_server.py - NPLT协议服务器
+- server/rdt_server.py - RDT文件传输服务器
+- server/http_server.py - HTTP服务器
+- server/llm/ - LLM集成（仅后端使用）
+  - llm/base.py - LLM基础接口
+  - llm/zhipu.py - 智谱AI实现
+  - llm/models.py - 模型定义
+- server/tools/ - 工具实现（仅后端使用）
+  - tools/base.py - 工具基类
+  - tools/command.py - 命令执行工具
+  - tools/monitor.py - 系统监控工具
+  - tools/semantic_search.py - 语义检索工具
+  - tools/file_upload.py - 文件上传工具
+  - tools/file_download.py - 文件下载工具
+- server/storage/ - 后端数据存储模块
+  - storage/vector_store.py - 向量存储
+  - storage/history.py - 对话历史
+  - storage/index_manager.py - 索引管理
+- server/utils/ - 后端工具函数
+  - utils/config.py - 配置管理
+  - utils/path_validator.py - 路径验证
+- server/protocols/ - 协议实现（与shared/protocols/保持同步）
+  - protocols/nplt.py - NPLT协议
+  - protocols/rdt.py - RDT协议
+
+**理由**: 后端自包含确保服务器可以独立打包、部署和运行，无需依赖前端代码或其他模块。这种架构支持微服务化演进，后端可以作为独立服务部署在不同服务器上。LLM和工具只在后端使用，集中管理避免版本冲突。存储模块包含业务逻辑（向量存储、对话历史），与运行时数据目录（storage/）分离。
+
+**2. 前端轻量级原则 (Frontend Lightweight Principle)**
+
+clients/ 目录 MUST 只包含前端UI和通信逻辑，MUST 不包含业务逻辑。clients/ 目录结构 MUST 包含：
+- clients/cli/ - CLI客户端
+  - cli/main.py - 客户端入口
+  - cli/ui.py - UI实现
+  - cli/nplt_client.py - NPLT协议客户端
+  - cli/rdt_client.py - RDT文件传输客户端
+  - cli/client_api.py - 客户端API
+  - cli/tests/ - 客户端测试
+- (未来) clients/web/ - Web客户端
+- (未来) clients/desktop/ - Desktop客户端
+
+前端代码 MUST 只负责：
+- 用户界面显示和交互
+- 协议通信（连接、发送、接收）
+- 数据格式转换（协议格式 ↔ UI格式）
+- 用户输入处理和验证
+
+前端代码 MUST NOT 包含：
+- Agent逻辑
+- 工具执行
+- LLM调用
+- 业务规则
+
+**理由**: 前端轻量级确保客户端可以快速启动、低资源占用。业务逻辑集中在后端，前端只负责展示和通信，职责清晰。这种架构支持多前端（CLI、Web、Desktop）共享相同的后端服务，避免代码重复。前端可以独立开发和迭代，不影响后端逻辑。
+
+**3. 协议共享原则 (Protocol Sharing Principle)**
+
+shared/ 目录 MUST 包含真正前后端共享的代码。shared/ 目录结构 MUST 包含：
+- shared/protocols/ - 通信协议定义（前后端都需要）
+  - protocols/nplt.py - NPLT协议定义（消息类型、数据格式）
+  - protocols/rdt.py - RDT协议定义（包结构、滑动窗口）
+- shared/utils/ - 通用工具函数
+  - utils/logger.py - 日志工具
+  - utils/types.py - 共享类型定义
+  - utils/config.py - 配置基础类
+
+shared/ 目录 MUST NOT 包含：
+- LLM相关代码（仅在server/中使用）
+- 工具实现（仅在server/中使用）
+- 业务逻辑（仅在server/中使用）
+
+**理由**: 协议定义是前后端唯一的共享依赖，必须保持一致。将协议放在shared/目录确保前端和服务器使用相同的协议定义，避免不一致导致的通信问题。通用工具（日志、类型）放在shared/避免重复，但业务逻辑（LLM、工具）必须放在server/中，避免前端误用。
+
+**4. 数据存储分离原则 (Data Storage Separation Principle)**
+
+项目 MUST 区分代码模块和运行时数据目录：
+- server/storage/ - 后端数据存储模块（代码）
+  - storage/vector_store.py - 向量存储实现
+  - storage/history.py - 对话历史实现
+- storage/ - 运行时数据目录（非代码）
+  - storage/vectors/ - 向量索引文件
+  - storage/history/ - 对话历史文件
+  - storage/uploads/ - 上传文件目录
+
+这种分离确保：
+- 代码模块可以独立测试（使用内存存储或mock数据）
+- 运行时数据可以独立管理和备份
+- 部署时可以灵活配置数据目录位置
+
+**理由**: 代码和数据分离是软件工程的最佳实践。代码模块（.py文件）定义数据结构和操作逻辑，运行时数据目录（vectors/、history/）存储实际数据。这种分离支持：
+- 测试灵活性：单元测试可以使用内存存储，集成测试使用真实文件
+- 部署灵活性：生产环境可以将数据目录放在高性能磁盘或网络存储
+- 备份恢复：只需要备份storage/目录，无需备份代码
+- 多实例支持：多个服务器实例可以共享或隔离数据目录
+
+**5. 废弃目录清理原则 (Deprecated Directory Cleanup Principle)**
+
+src/ 目录 MUST 被完全删除，所有功能 MUST 迁移到对应位置：
+- src/llm/ → server/llm/（已完成）
+- src/tools/ → server/tools/（已完成）
+- src/storage/ → server/storage/（代码模块）
+- src/utils/ → server/utils/（后端专用）或 shared/utils/（通用工具）
+- src/protocols/ → shared/protocols/（已完成）
+- src/client/ → clients/cli/（已完成）
+- src/server/ → server/（已完成）
+
+删除 src/ 后，项目根目录结构 MUST 为：
+```
+├── server/          # 后端服务器（可独立部署）
+├── clients/         # 前端客户端
+├── shared/          # 真正共享的代码（protocols/、utils/）
+├── storage/         # 运行时数据目录（vectors/、history/、uploads/）
+├── tests/           # 测试代码
+├── docs/            # 文档
+├── scripts/         # 脚本工具
+├── specs/           # 功能规范
+├── .specify/        # 项目管理文件
+└── pyproject.toml   # 项目配置
+```
+
+**理由**: 清晰的目录结构减少认知负担。废弃的src/目录会导致混淆（"我应该在哪个目录写代码？"）。统一的结构使新开发者快速理解项目组织。删除冗余目录减少维护成本（不需要在两个地方同步更改）。
+
+**6. 导入路径规范 (Import Path Standards)**
+
+代码 MUST 使用规范的导入路径：
+- 后端代码导入后端模块：`from server.llm.base import LLMProvider`
+- 后端代码导入工具：`from server.tools.command import CommandTool`
+- 前端代码导入协议：`from shared.protocols.nplt import MessageType`
+- 前端代码导入工具：`from shared.utils.logger import get_logger`
+- 绝对禁止：`from src.llm.base import LLMProvider`（src/已废弃）
+
+导入路径 MUST 与物理目录结构一致，禁止使用跨层导入（如server/导入clients/）。
+
+**理由**: 规范的导入路径确保代码可读性和可维护性。IDE可以正确解析导入，提供代码补全和跳转功能。跨层导入破坏模块边界，导致紧耦合和不清晰的依赖关系。
+
 ### 客户端独立性原则 (Client Independence Principle)
 
 客户端MUST完全独立于服务器代码，拥有自己的协议定义副本。client/目录MUST包含完整的协议定义（client/protocols/nplt.py、client/protocols/rdt.py），MUST不依赖src/protocols/中的服务器代码。客户端MUST有独立的依赖管理（client/pyproject.toml），定义自己的依赖包。客户端MUST能够独立安装和部署，无需服务器代码。客户端协议定义MUST与服务器协议定义保持同步，通过版本检查机制验证兼容性。客户端和服务器MUST独立演进，协议变更时MUST更新双方定义。
@@ -222,6 +362,14 @@ Agent工具MUST精简且必要，工具总数SHOULD控制在5-7个范围内。�
 - **数据传输格式**: 实时聊天消息MUST使用纯文本，历史记录批量传输MUST使用JSON格式（保留tool_calls、timestamp等结构化数据）
 - **协议文档**: 协议格式、消息流和调用链路MUST记录在docs/目录（message-flow-analysis.md、protocol-call-chain.md）
 - **工具设计文档**: 工具清单、职责边界、输入输出格式MUST记录在docs/目录（agent_complete_specification.md）
+- **项目结构**: MUST遵循前后端分离架构，server/包含所有后端代码，clients/只包含UI和通信，shared/只包含协议和通用工具
+- **目录组织**: server/、clients/、shared/、storage/、tests/、docs/、scripts/、specs/、.specify/、pyproject.toml
+- **废弃目录**: src/目录MUST被删除，所有功能已迁移到server/、clients/、shared/
+- **导入路径**: 后端使用`from server.xxx import`，前端使用`from shared.protocols.xxx import`，禁止使用`from src.xxx import`
+- **后端自包含**: server/目录MUST能够独立部署，包含llm/、tools/、storage/、utils/、protocols/
+- **前端轻量级**: clients/目录MUST只包含UI和通信逻辑，MUST不包含业务逻辑
+- **协议共享**: shared/protocols/ MUST包含前后端共享的协议定义，MUST与server/protocols/保持同步
+- **数据分离**: server/storage/是代码模块，storage/是运行时数据目录，两者MUST分离
 - **客户端独立性**: 客户端MUST有独立的协议定义副本（client/protocols/），MUST不依赖src/protocols/服务器代码
 - **客户端依赖**: 客户端MUST有独立的依赖管理（client/pyproject.toml），MUST能够独立安装和部署
 - **协议同步**: 客户端和服务器协议定义MUST保持同步，MUST通过版本检查机制验证兼容性
@@ -270,6 +418,12 @@ Agent工具MUST精简且必要，工具总数SHOULD控制在5-7个范围内。�
 - **远程连接测试**: MUST 测试客户端连接远程服务器，验证配置文件中的server.host和server.port
 - **PyInstaller打包测试**: MUST 测试Desktop客户端打包成.exe后的功能完整性
 - **配置文件测试**: MUST 测试配置文件包含所有必需字段，MUST测试首次运行自动生成默认配置
+- **项目结构测试**: MUST 测试server/目录能够独立部署，MUST测试clients/目录只包含UI和通信逻辑
+- **导入路径测试**: MUST 测试所有导入路径符合规范（禁止from src.xxx import）
+- **废弃目录测试**: MUST 验证src/目录已删除，所有功能已迁移到server/、clients/、shared/
+- **后端自包含测试**: MUST 测试server/包含所有后端必需代码（llm/、tools/、storage/、utils/、protocols/）
+- **协议共享测试**: MUST 测试shared/protocols/与server/protocols/保持同步
+- **数据分离测试**: MUST 测试server/storage/（代码模块）和storage/（运行时数据）正确分离
 
 ## 治理
 
@@ -300,5 +454,8 @@ Agent工具MUST精简且必要，工具总数SHOULD控制在5-7个范围内。�
 - 文件检索工具 MUST 验证是否实施混合检索策略（精确/模糊/语义三层）
 - 客户端架构变更 MUST 验证是否符合客户端独立性原则
 - 多前端实现 MUST 验证是否使用适配器模式解耦前端和后端
+- 项目结构变更 MUST 验证是否符合项目结构原则（后端自包含、前端轻量级、协议共享、数据分离）
+- 目录重组 MUST 验证是否删除src/目录，所有功能是否正确迁移
+- 导入路径变更 MUST 验证是否使用规范路径（server.*、shared.*），禁止使用src.*
 
-**版本**: 1.6.0 | **批准日期**: 2025-12-28 | **最后修正**: 2026-01-01
+**版本**: 1.7.0 | **批准日期**: 2025-12-28 | **最后修正**: 2026-01-01

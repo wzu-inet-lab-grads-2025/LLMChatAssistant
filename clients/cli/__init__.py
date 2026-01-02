@@ -7,6 +7,7 @@
 from .nplt_client import NPLTClient
 from .ui import ClientUI, get_ui
 from .main import ClientMain, main
+from .client_api import ClientAPI, create_client
 
 __all__ = [
     'NPLTClient',
@@ -14,4 +15,6 @@ __all__ = [
     'get_ui',
     'ClientMain',
     'main',
+    'ClientAPI',
+    'create_client',
 ]

@@ -12,7 +12,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Set
 
-from clients.cli.protocols.rdt import ACKPacket, RDTPacket
+from shared.protocols.rdt import ACKPacket, RDTPacket
 
 
 class RDTClientState(Enum):

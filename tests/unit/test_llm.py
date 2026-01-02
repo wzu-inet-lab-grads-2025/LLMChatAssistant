@@ -8,9 +8,9 @@ LLM Provider 单元测试
 import os
 import pytest
 
-from src.llm.zhipu import ZhipuProvider
-from src.llm.base import LLMProvider
-from src.llm.models import DEFAULT_CHAT_MODEL, AVAILABLE_MODELS
+from server.llm.zhipu import ZhipuProvider
+from server.llm.base import LLMProvider
+from server.llm.models import DEFAULT_CHAT_MODEL, AVAILABLE_MODELS
 
 
 class TestZhipuProvider:
@@ -72,7 +72,7 @@ class TestZhipuProvider:
     @pytest.mark.asyncio
     async def test_chat_completion(self, provider):
         """测试聊天补全（真实 API 调用）"""
-        from src.llm.base import Message
+        from server.llm.base import Message
 
         messages = [
             Message(role="user", content="你好，请用一句话介绍你自己。")
@@ -94,7 +94,7 @@ class TestZhipuProvider:
     @pytest.mark.asyncio
     async def test_chat_with_system_message(self, provider):
         """测试带系统消息的聊天"""
-        from src.llm.base import Message
+        from server.llm.base import Message
 
         messages = [
             Message(role="system", content="你是一个 helpful assistant。"),
@@ -115,7 +115,7 @@ class TestZhipuProvider:
     @pytest.mark.asyncio
     async def test_chat_with_model_switch(self, provider):
         """测试模型切换后的聊天"""
-        from src.llm.base import Message
+        from server.llm.base import Message
 
         # 切换到 glm-4.5-flash
         provider.set_model("glm-4.5-flash")
@@ -220,7 +220,7 @@ class TestZhipuProviderErrorHandling:
     @pytest.mark.asyncio
     async def test_empty_messages(self, provider):
         """测试空消息列表"""
-        from src.llm.base import Message
+        from server.llm.base import Message
 
         # chat 返回异步生成器，需要尝试迭代
         try:
@@ -236,7 +236,7 @@ class TestZhipuProviderErrorHandling:
     @pytest.mark.asyncio
     async def test_invalid_message_format(self, provider):
         """测试无效的消息格式"""
-        from src.llm.base import Message
+        from server.llm.base import Message
 
         # Message 对象需要 role 和 content 字段
         # 如果缺少必需字段，应该抛出异常

@@ -169,19 +169,19 @@ class BaseCLITest:
         port: int = DEFAULT_PORT
     ):
         """
-        创建客户端实例
+        创建客户端实例（使用新的ClientAPI）
 
         Args:
             host: 服务器地址
             port: 服务器端口
 
         Returns:
-            客户端实例
+            客户端实例 (ClientAPI)
         """
-        # 动态导入客户端（避免导入错误）
+        # 使用新的ClientAPI
         try:
-            from client.main import ClientMain
-            client = ClientMain(host=host, port=port)
+            from clients.cli import create_client
+            client = await create_client(host=host, port=port, auto_connect=True)
             return client
         except ImportError as e:
             raise ImportError(
@@ -211,7 +211,7 @@ class BaseCLITest:
     async def disconnect_client(self, client):
         """断开客户端连接"""
         try:
-            await client.close()
+            await client.disconnect()  # ClientAPI使用disconnect()
             print(f"✓ 客户端已断开")
         except Exception as e:
             print(f"✗ 客户端断开失败: {e}")

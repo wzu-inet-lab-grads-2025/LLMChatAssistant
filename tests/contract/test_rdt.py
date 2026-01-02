@@ -7,7 +7,7 @@ RDT 协议编解码测试
 
 import pytest
 
-from src.protocols.rdt import ACKPacket, RDTPacket
+from shared.protocols.rdt import ACKPacket, RDTPacket
 
 
 class TestRDTPacketEncoding:

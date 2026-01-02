@@ -12,9 +12,9 @@ import pytest
 import pytest_asyncio
 import time
 
-from src.client.nplt_client import NPLTClient
-from src.client.ui import ClientUI
-from src.server.nplt_server import NPLTServer
+from clients.cli.nplt_client import NPLTClient
+from clients.cli.ui import ClientUI
+from server.nplt_server import NPLTServer
 
 
 @pytest.mark.skipif(

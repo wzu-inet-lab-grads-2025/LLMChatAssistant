@@ -18,7 +18,7 @@ from server.tools.monitor import MonitorTool
 from server.tools.semantic_search import SemanticSearchTool
 from shared.utils.config import AppConfig
 from shared.utils.logger import get_server_logger
-from server.protocols.nplt import MessageType
+from shared.protocols.nplt import MessageType
 from .agent import ReActAgent
 from .nplt_server import NPLTServer, Session
 from .rdt_server import RDTServer

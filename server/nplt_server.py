@@ -13,7 +13,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Callable, Dict, Optional, Tuple
 
-from server.protocols.nplt import MessageType, NPLTMessage
+from shared.protocols.nplt import MessageType, NPLTMessage
 from server.storage.history import ConversationHistory, SessionManager
 
 
@@ -63,7 +63,7 @@ class Session:
 
     client_type: str = "cli"                     # 客户端类型：cli | web | desktop
 
-    HEARTBEAT_TIMEOUT = 90  # 心跳超时时间（秒）
+    HEARTBEAT_TIMEOUT = 180  # 心跳超时时间（秒）- 修复：2倍心跳间隔，避免误杀
 
     def is_timeout(self) -> bool:
         """检查是否超时"""
@@ -376,8 +376,9 @@ class NPLTServer:
                 # 聊天文本消息
                 text = message.data.decode('utf-8', errors='ignore')
 
-                # 忽略心跳响应
+                # 忽略心跳响应（但必须更新心跳时间）
                 if text == "HEARTBEAT":
+                    session.update_heartbeat()  # 修复：更新心跳时间，防止误判超时
                     return
 
                 # 忽略空消息（流式输出结束标记）

@@ -1,0 +1,92 @@
+{
+  "timestamp": "2026-01-01T22:12:51.753750",
+  "tests": [
+    {
+      "name": "服务器连接",
+      "status": "PASS",
+      "details": {
+        "connect_time": "0.003s",
+        "session_id": null
+      }
+    },
+    {
+      "name": "聊天功能",
+      "status": "FAIL",
+      "error": "'NPLTClient' object has no attribute 'receive_messages'"
+    },
+    {
+      "name": "文件上传",
+      "status": "PASS",
+      "details": {
+        "upload_time": "0.041s",
+        "filename": "test_upload_sample.txt",
+        "size": 610
+      }
+    },
+    {
+      "name": "模型切换",
+      "status": "PASS",
+      "details": {
+        "old_model": "glm-4-flash",
+        "new_model": "glm-4-flash"
+      }
+    },
+    {
+      "name": "会话管理",
+      "status": "PARTIAL",
+      "error": "NPLTClient.send_message() got an unexpected keyword argument 'msg_type'"
+    },
+    {
+      "name": "历史记录",
+      "status": "PARTIAL",
+      "error": "'NPLTClient' object has no attribute 'receive_messages'"
+    },
+    {
+      "name": "响应时间",
+      "status": "FAIL",
+      "error": "'NPLTClient' object has no attribute 'receive_messages'"
+    },
+    {
+      "name": "文件下载",
+      "status": "PARTIAL",
+      "note": "需要有效的下载token"
+    },
+    {
+      "name": "网络稳定性",
+      "status": "PASS",
+      "details": {
+        "attempts": 3,
+        "successes": 3
+      }
+    },
+    {
+      "name": "大文件处理",
+      "status": "PASS",
+      "details": {
+        "size_mb": "1.00",
+        "upload_time": "0.865s"
+      }
+    },
+    {
+      "name": "并发客户端",
+      "status": "PASS",
+      "details": {
+        "clients": 3
+      }
+    },
+    {
+      "name": "特殊字符文件名",
+      "status": "PASS",
+      "details": {
+        "tested": 3,
+        "passed": 3
+      }
+    }
+  ],
+  "summary": {
+    "total": 12,
+    "passed": 7,
+    "failed": 2,
+    "skipped": 3
+  }
+}

@@ -96,7 +96,7 @@ class ClientMain:
                 if await self._parse_command(user_input):
                     continue
 
-                # 显示用户消息（用Panel格式）
+                # 显示用户消息（用Panel格式，会自动清除输入行）
                 self.ui.print_message("user", user_input)
 
                 # 发送聊天消息
@@ -284,7 +284,7 @@ class ClientMain:
 
         # 发送模型切换请求到服务器
         import json
-        from clients.cli.protocols.nplt import MessageType
+        from shared.protocols.nplt import MessageType
 
         model_data = json.dumps({"model": model})
         success = await self.client.send_message(
@@ -309,7 +309,7 @@ class ClientMain:
 
     async def _command_history(self):
         """处理 /history 命令"""
-        from clients.cli.protocols.nplt import MessageType
+        from shared.protocols.nplt import MessageType
 
         # 发送历史记录请求到服务器
         success = await self.client.send_message(
@@ -323,7 +323,7 @@ class ClientMain:
 
     async def _command_clear(self):
         """处理 /clear 命令"""
-        from clients.cli.protocols.nplt import MessageType
+        from shared.protocols.nplt import MessageType
 
         # 发送清空请求到服务器
         success = await self.client.send_message(
@@ -342,7 +342,7 @@ class ClientMain:
 
     async def _command_sessions(self):
         """处理 /sessions 命令"""
-        from clients.cli.protocols.nplt import MessageType
+        from shared.protocols.nplt import MessageType
 
         # 发送会话列表请求到服务器
         success = await self.client.send_message(
@@ -363,7 +363,7 @@ class ClientMain:
         session_id = args[0]
         self.logger.info(f"切换会话请求: {session_id}")
 
-        from clients.cli.protocols.nplt import MessageType
+        from shared.protocols.nplt import MessageType
         import json
 
         # 发送切换会话请求到服务器
@@ -381,7 +381,7 @@ class ClientMain:
         """处理 /new 命令"""
         self.logger.info("创建新会话请求")
 
-        from clients.cli.protocols.nplt import MessageType
+        from shared.protocols.nplt import MessageType
 
         # 发送创建新会话请求到服务器
         success = await self.client.send_message(
@@ -412,7 +412,7 @@ class ClientMain:
             self.ui.print_warning("删除已取消")
             return
 
-        from clients.cli.protocols.nplt import MessageType
+        from shared.protocols.nplt import MessageType
         import json
 
         # 发送删除会话请求到服务器

@@ -9,7 +9,7 @@ import struct
 
 import pytest
 
-from src.protocols.rdt import ACKPacket, RDTPacket
+from shared.protocols.rdt import ACKPacket, RDTPacket
 
 
 class TestRDTPacketHeaderFormat:
@@ -208,7 +208,7 @@ class TestRDTCRC16:
 
     def test_checksum_calculation(self):
         """测试校验和计算"""
-        from src.protocols.rdt import crc16
+        from shared.protocols.rdt import crc16
 
         # 测试空数据
         checksum1 = crc16(b"")
@@ -222,7 +222,7 @@ class TestRDTCRC16:
 
     def test_checksum_consistency(self):
         """测试校验和一致性"""
-        from src.protocols.rdt import crc16
+        from shared.protocols.rdt import crc16
 
         data = b"consistent test"
 
@@ -234,7 +234,7 @@ class TestRDTCRC16:
 
     def test_checksum_includes_seq(self):
         """测试校验和包含 Seq 字段"""
-        from src.protocols.rdt import crc16
+        from shared.protocols.rdt import crc16
 
         # 校验和计算: checksum(seq + data)
         seq = 42

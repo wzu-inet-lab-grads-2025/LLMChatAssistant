@@ -113,7 +113,7 @@ class ReActAgent:
             await self.status_callback(status_msg)
 
     async def think_stream(self, user_message: str, conversation_history: ConversationHistory, session=None):
-        """思考并生成回复（流式输出，支持ReAct工具调用）
+        """思考并生成回复（真正的流式输出，支持ReAct工具调用）
 
         Args:
             user_message: 用户消息
@@ -122,41 +122,58 @@ class ReActAgent:
 
         Yields:
             str: 流式输出的文本片段
-        """
-        import sys
-        # 强制写入调试文件
-        with open('/tmp/think_stream_debug.log', 'a') as f:
-            f.write(f"[{time.time()}] think_stream调用: {user_message[:50]}\n")
-            f.flush()
 
+        实现说明：
+        - 简单对话（无需工具）：直接流式生成
+        - 复杂任务（需要工具）：先执行工具，再流式生成最终响应
+        """
         try:
             # 发送状态：正在分析
             await self._send_status("thinking", "正在分析用户意图")
 
-            # 使用 ReAct 循环处理可能需要工具的请求
-            print(f"[DEBUG] think_stream: 开始，消息={user_message[:30]}", file=sys.stderr, flush=True)
-            final_response, tool_calls = await self.react_loop(
-                user_message=user_message,
-                conversation_history=conversation_history,
-                session=session
-            )
-            print(f"[DEBUG] think_stream: react_loop完成，工具调用次数={len(tool_calls)}", file=sys.stderr, flush=True)
+            # 步骤1：判断是否需要使用工具
+            thought = await self._think_and_decide(user_message, conversation_history)
+            tool_use = self._parse_tool_use(thought)
 
-            with open('/tmp/think_stream_debug.log', 'a') as f:
-                f.write(f"[{time.time()}] react_loop完成，工具调用次数={len(tool_calls)}\n")
-                f.flush()
+            tool_calls = []
 
-            # 发送状态：正在生成
-            await self._send_status("generating", "正在生成回复")
+            if tool_use:
+                # 步骤2a：需要工具，执行ReAct循环
+                await self._send_status("thinking", "正在执行工具调用")
+                final_response, tool_calls = await self._react_loop_with_tools(
+                    user_message,
+                    conversation_history,
+                    session,
+                    tool_use,
+                    tool_calls
+                )
 
-            # 对最终回复进行流式输出
-            # 由于 react_loop 返回的是完整字符串，我们需要模拟流式输出
-            chunk_size = 2  # 每次发送2个字符
-            for i in range(0, len(final_response), chunk_size):
-                chunk = final_response[i:i + chunk_size]
-                yield chunk
-                # 添加小延迟模拟流式输出
-                await asyncio.sleep(0.01)
+                # 步骤3a：流式输出最终响应
+                await self._send_status("generating", "正在生成回复")
+                async for chunk in self._generate_final_response_stream(
+                    user_message,
+                    conversation_history,
+                    tool_calls
+                ):
+                    yield chunk  # 真正的流式输出
+
+            else:
+                # 步骤2b：无需工具，直接流式生成
+                await self._send_status("generating", "正在生成回复")
+
+                # 构建消息列表
+                context = conversation_history.get_context(max_turns=5)
+                messages = []
+                for msg in context:
+                    messages.append(Message(role=msg.role, content=msg.content))
+                messages.append(Message(role="user", content=user_message))
+
+                # 真正的流式输出：直接调用LLM流式API
+                async for chunk in self.llm_provider.chat_stream(
+                    messages=messages,
+                    temperature=0.7
+                ):
+                    yield chunk  # 立即yield，实现真正的流式
 
         except Exception as e:
             # API 调用失败，降级到本地命令执行
@@ -165,12 +182,11 @@ class ReActAgent:
             print(f"[ERROR] think_stream异常: {e}", file=sys.stderr, flush=True)
             traceback.print_exc(file=sys.stderr)
             fallback_response = self._fallback_to_local(user_message, str(e))
-            # 模拟流式输出
+            # 降级响应也分块yield
             chunk_size = 2
             for i in range(0, len(fallback_response), chunk_size):
                 chunk = fallback_response[i:i + chunk_size]
                 yield chunk
-                await asyncio.sleep(0.01)
 
     async def think(self, user_message: str, conversation_history: ConversationHistory) -> str:
         """思考并生成回复（非流式，保持向后兼容）
@@ -206,23 +222,26 @@ class ReActAgent:
             # API 调用失败，降级到本地命令执行
             return self._fallback_to_local(user_message, str(e))
 
-    async def react_loop(
+    async def _react_loop_with_tools(
         self,
         user_message: str,
         conversation_history: ConversationHistory,
-        session=None
-    ) -> tuple[str, List[ToolCall]]:
-        """ReAct 循环：推理 -> 行动 -> 观察
+        session,
+        initial_tool_use: dict,
+        tool_calls: list
+    ) -> tuple[str, list]:
+        """执行需要工具调用的ReAct循环
 
         Args:
             user_message: 用户消息
             conversation_history: 对话历史
-            session: Session对象（用于工具访问uploaded_files等）
+            session: Session对象
+            initial_tool_use: 初始工具调用信息
+            tool_calls: 工具调用列表
 
         Returns:
             (最终回复, 工具调用列表)
         """
-        tool_calls = []
         current_message = user_message
         round_count = 0
 
@@ -231,27 +250,25 @@ class ReActAgent:
             round_count += 1
 
             try:
-                # 思考：调用 LLM 决定是否需要使用工具
-                await self._send_status("thinking", f"正在思考 (第 {round_count} 轮)")
-                thought = await self._think_and_decide(current_message, conversation_history)
-
-                # 调试：记录LLM返回
-                with open('/tmp/llm_response_debug.log', 'a') as f:
-                    f.write(f"\n=== 第{round_count}轮 LLM返回 ===\n{thought}\n{'='*50}\n")
-                    f.flush()
-
-                # 检查是否需要使用工具
-                tool_use = self._parse_tool_use(thought)
+                if round_count > 1:
+                    # 重新思考是否需要更多工具
+                    await self._send_status("thinking", f"正在思考 (第 {round_count} 轮)")
+                    thought = await self._think_and_decide(current_message, conversation_history)
+                    tool_use = self._parse_tool_use(thought)
+                else:
+                    tool_use = initial_tool_use
 
                 if not tool_use:
-                    # 不需要工具，返回最终回复
+                    # 不需要更多工具，生成最终回复
                     await self._send_status("generating", "正在生成最终回复")
-                    final_response = await self._generate_final_response(
+                    full_response = ""
+                    async for chunk in self._generate_final_response_stream(
                         current_message,
                         conversation_history,
                         tool_calls
-                    )
-                    return final_response, tool_calls
+                    ):
+                        full_response += chunk
+                    return full_response, tool_calls
 
                 # 执行工具
                 tool_name = tool_use["name"]
@@ -308,12 +325,127 @@ class ReActAgent:
 
         # 达到最大轮数，生成最终回复
         await self._send_status("generating", "正在生成最终回复")
-        final_response = await self._generate_final_response(
+        full_response = ""
+        async for chunk in self._generate_final_response_stream(
             current_message,
             conversation_history,
             tool_calls
-        )
-        return final_response, tool_calls
+        ):
+            full_response += chunk
+        return full_response, tool_calls
+
+    async def react_loop(
+        self,
+        user_message: str,
+        conversation_history: ConversationHistory,
+        session=None
+    ) -> tuple[str, List[ToolCall]]:
+        """ReAct 循环：推理 -> 行动 -> 观察（用于向后兼容）
+
+        Args:
+            user_message: 用户消息
+            conversation_history: 对话历史
+            session: Session对象（用于工具访问uploaded_files等）
+
+        Returns:
+            (最终回复, 工具调用列表)
+        """
+        tool_calls = []
+        current_message = user_message
+        round_count = 0
+
+        # 最多进行 5 轮工具调用
+        while round_count < self.max_tool_rounds:
+            round_count += 1
+
+            try:
+                # 思考：调用 LLM 决定是否需要使用工具
+                await self._send_status("thinking", f"正在思考 (第 {round_count} 轮)")
+                thought = await self._think_and_decide(current_message, conversation_history)
+
+                # 调试：记录LLM返回
+                with open('/tmp/llm_response_debug.log', 'a') as f:
+                    f.write(f"\n=== 第{round_count}轮 LLM返回 ===\n{thought}\n{'='*50}\n")
+                    f.flush()
+
+                # 检查是否需要使用工具
+                tool_use = self._parse_tool_use(thought)
+
+                if not tool_use:
+                    # 不需要工具，返回最终回复（收集完整字符串）
+                    await self._send_status("generating", "正在生成最终回复")
+                    full_response = ""
+                    async for chunk in self._generate_final_response_stream(
+                        current_message,
+                        conversation_history,
+                        tool_calls
+                    ):
+                        full_response += chunk
+                    return full_response, tool_calls
+
+                # 执行工具
+                tool_name = tool_use["name"]
+                tool_args = tool_use["args"]
+
+                if tool_name not in self.tools:
+                    error_msg = f"工具不存在: {tool_name}"
+                    current_message = f"工具调用失败：{error_msg}\n请尝试其他方法。"
+                    continue
+
+                tool = self.tools[tool_name]
+
+                # 注入 session 到工具（如果工具支持）
+                if hasattr(tool, 'session') and session is not None:
+                    tool.session = session
+
+                # 发送状态：正在调用工具
+                await self._send_status("tool_call", f"正在调用工具: {tool_name}")
+
+                # 执行工具（带超时控制）
+                start_time = time.time()
+                result = tool.execute(**tool_args)
+                duration = time.time() - start_time
+
+                # 检查超时
+                if duration > self.tool_timeout:
+                    result = ToolExecutionResult(
+                        success=False,
+                        output="",
+                        error=f"工具执行超时（{duration:.2f}s > {self.tool_timeout}s）"
+                    )
+
+                # 记录工具调用
+                tool_call = ToolCall(
+                    tool_name=tool_name,
+                    arguments=tool_args,
+                    result=result.output if result.success else result.error or "",
+                    status="success" if result.success else "failed",
+                    duration=duration,
+                    timestamp=time.strftime("%Y-%m-%d %H:%M:%S")
+                )
+                tool_calls.append(tool_call)
+
+                # 更新当前消息（包含工具结果）
+                if result.success:
+                    current_message = f"工具 {tool_name} 执行成功，结果：\n{result.output}\n\n请基于此结果回答用户的问题：{user_message}"
+                else:
+                    current_message = f"工具 {tool_name} 执行失败：{result.error}\n\n请尝试其他方法回答：{user_message}"
+
+            except Exception as e:
+                # API 调用失败，降级到本地命令执行
+                fallback_response = self._fallback_to_local(user_message, str(e))
+                return fallback_response, tool_calls
+
+        # 达到最大轮数，生成最终回复
+        await self._send_status("generating", "正在生成最终回复")
+        full_response = ""
+        async for chunk in self._generate_final_response_stream(
+            current_message,
+            conversation_history,
+            tool_calls
+        ):
+            full_response += chunk
+        return full_response, tool_calls
 
     async def _think_and_decide(self, message: str, conversation_history: ConversationHistory) -> str:
         """思考并决定是否使用工具
@@ -528,21 +660,21 @@ ARGS: {"query": "数据库配置", "top_k": 3, "scope": "all"}
         except json.JSONDecodeError:
             return {"name": tool_name, "args": {}}
 
-    async def _generate_final_response(
+    async def _generate_final_response_stream(
         self,
         message: str,
         conversation_history: ConversationHistory,
         tool_calls: List[ToolCall]
-    ) -> str:
-        """生成最终回复
+    ):
+        """生成最终回复（流式输出）
 
         Args:
             message: 消息
             conversation_history: 对话历史
             tool_calls: 工具调用列表
 
-        Returns:
-            最终回复
+        Yields:
+            str: 流式输出的文本片段
         """
         # 构建提示
         prompt = f"""基于以下工具调用结果，回答用户的问题：
@@ -560,16 +692,21 @@ ARGS: {"query": "数据库配置", "top_k": 3, "scope": "all"}
 
         prompt += "\n请给出清晰、准确的回答。"
 
-        # 调用 LLM
+        # 调用 LLM 流式API
         try:
-            response = await self.llm_provider.chat(
+            async for chunk in self.llm_provider.chat_stream(
                 messages=[Message(role="user", content=prompt)],
                 temperature=0.7
-            )
-            return response
+            ):
+                yield chunk  # 真正的流式输出
         except Exception as e:
-            # 如果 LLM 调用失败，返回工具结果摘要
-            return self._summarize_tool_results(tool_calls)
+            # 如果 LLM 调用失败，返回工具结果摘要（非流式）
+            summary = self._summarize_tool_results(tool_calls)
+            # 将摘要模拟为流式输出
+            chunk_size = 2
+            for i in range(0, len(summary), chunk_size):
+                yield summary[i:i + chunk_size]
+                await asyncio.sleep(0.01)
 
     def _summarize_tool_results(self, tool_calls: List[ToolCall]) -> str:
         """汇总工具结果（降级方案）
