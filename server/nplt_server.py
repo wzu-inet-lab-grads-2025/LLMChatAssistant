@@ -6,6 +6,7 @@ NPLT 服务器模块
 """
 
 import asyncio
+import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -525,7 +526,7 @@ class NPLTServer:
     
     async def _handle_file_data(self, session: Session, message: NPLTMessage):
         """处理文件数据"""
-        from storage.files import UploadedFile
+        from server.storage.files import UploadedFile
         
         try:
             if not session.upload_state:
