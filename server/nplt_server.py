@@ -559,15 +559,23 @@ class NPLTServer:
 
                     print(f"[INFO] [SERVER] 文件已保存: {uploaded_file.file_id}")
 
-                    # 将文件元数据添加到 session（关键修复！）
-                    session.add_uploaded_file({
+                    # 将文件元数据添加到 session 和 conversation_history
+                    file_info = {
                         "file_id": uploaded_file.file_id,
                         "filename": uploaded_file.filename,
                         "file_path": uploaded_file.storage_path,
                         "uploaded_at": uploaded_file.uploaded_at,
                         "size": uploaded_file.size,
                         "indexed": False  # 尚未索引
-                    })
+                    }
+
+                    # 添加到 session
+                    session.add_uploaded_file(file_info)
+
+                    # 同步到 conversation_history（持久化）
+                    if session.conversation_history:
+                        session.conversation_history.add_uploaded_file(file_info)
+                        print(f"[INFO] [SERVER] 文件元数据已持久化到 conversation_history: {session.session_id}")
 
                     print(f"[INFO] [SERVER] 文件元数据已注册到 session: {session.session_id}")
 
@@ -797,10 +805,15 @@ class NPLTServer:
             new_history = ConversationHistory.load(target_session_id)
             if new_history:
                 session.conversation_history = new_history
+
+                # 同步 uploaded_files 到 session
+                session.uploaded_files = new_history.get_uploaded_files()
                 print(f"[INFO] [SERVER] 已加载会话上下文: {target_session_id[:8]}")
+                print(f"[INFO] [SERVER] 已恢复 {len(session.uploaded_files)} 个上传文件")
             else:
                 # 如果加载失败，创建新的历史记录
                 session.conversation_history = ConversationHistory.create_new(target_session_id)
+                session.uploaded_files = []
                 print(f"[WARN] [SERVER] 未找到会话历史，创建新的: {target_session_id[:8]}")
 
             # 发送确认
@@ -841,6 +854,7 @@ class NPLTServer:
 
             # 为客户端连接创建新的对话历史
             session.conversation_history = ConversationHistory.create_new(new_session_id)
+            session.uploaded_files = []  # 新会话的 uploaded_files
 
             # 发送确认
             await session.send_message(

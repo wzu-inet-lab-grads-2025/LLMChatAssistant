@@ -88,6 +88,7 @@ class ConversationHistory:
     messages: List[ChatMessage]   # 消息列表
     created_at: datetime          # 创建时间
     updated_at: datetime          # 更新时间
+    uploaded_files: List[dict] = field(default_factory=list)  # 上传的文件列表
 
     def add_message(self, role: str, content: str, tool_calls: List[ToolCall] = None, metadata: dict = None):
         """添加消息
@@ -136,6 +137,52 @@ class ConversationHistory:
         self.messages = []
         self.updated_at = datetime.now()
 
+    def add_uploaded_file(self, file_info: dict):
+        """添加上传的文件
+
+        Args:
+            file_info: 文件信息字典
+                {
+                    "file_id": "uuid",
+                    "filename": "name.txt",
+                    "file_path": "/path/to/file",
+                    "size": 1234,
+                    "uploaded_at": datetime,
+                    "indexed": False
+                }
+        """
+        # 检查是否已存在（避免重复）
+        for existing in self.uploaded_files:
+            if existing.get("file_id") == file_info.get("file_id"):
+                return  # 已存在，不重复添加
+
+        self.uploaded_files.append(file_info)
+        self.updated_at = datetime.now()
+
+    def get_uploaded_files(self) -> List[dict]:
+        """获取所有上传的文件
+
+        Returns:
+            上传文件列表
+        """
+        return self.uploaded_files.copy()  # 返回副本，避免外部修改
+
+    def remove_uploaded_file(self, file_id: str) -> bool:
+        """移除上传的文件
+
+        Args:
+            file_id: 文件ID
+
+        Returns:
+            是否移除成功
+        """
+        for i, file_info in enumerate(self.uploaded_files):
+            if file_info.get("file_id") == file_id:
+                self.uploaded_files.pop(i)
+                self.updated_at = datetime.now()
+                return True
+        return False
+
     def save(self, storage_dir: str = "storage/history"):
         """保存对话历史到磁盘
 
@@ -148,9 +195,18 @@ class ConversationHistory:
         filename = f"session_{self.created_at.strftime('%Y%m%d')}_{self.session_id[:8]}.json"
         filepath = os.path.join(storage_dir, filename)
 
+        # 序列化 uploaded_files（datetime 对象转为 ISO 字符串）
+        uploaded_files_serialized = []
+        for file_info in self.uploaded_files:
+            file_copy = file_info.copy()
+            if isinstance(file_copy.get("uploaded_at"), datetime):
+                file_copy["uploaded_at"] = file_copy["uploaded_at"].isoformat()
+            uploaded_files_serialized.append(file_copy)
+
         data = {
             "session_id": self.session_id,
             "messages": [msg.to_dict() for msg in self.messages],
+            "uploaded_files": uploaded_files_serialized,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat()
         }
@@ -180,9 +236,19 @@ class ConversationHistory:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         data = json.load(f)
 
+                    # 反序列化 uploaded_files（ISO 字符串转为 datetime）
+                    uploaded_files = []
+                    for file_info in data.get("uploaded_files", []):
+                        file_copy = file_info.copy()
+                        if "uploaded_at" in file_copy:
+                            if isinstance(file_copy["uploaded_at"], str):
+                                file_copy["uploaded_at"] = datetime.fromisoformat(file_copy["uploaded_at"])
+                        uploaded_files.append(file_copy)
+
                     return cls(
                         session_id=data["session_id"],
                         messages=[ChatMessage.from_dict(msg) for msg in data["messages"]],
+                        uploaded_files=uploaded_files,
                         created_at=datetime.fromisoformat(data["created_at"]),
                         updated_at=datetime.fromisoformat(data["updated_at"])
                     )
