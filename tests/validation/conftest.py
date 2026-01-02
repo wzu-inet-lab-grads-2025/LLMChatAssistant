@@ -58,8 +58,8 @@ def auto_confirm(request):
 @pytest.fixture
 async def fresh_agent():
     """为每个测试创建新的Agent实例（async fixture，由pytest-asyncio自动处理）"""
-    from src.server.agent import ReActAgent
-    from src.llm.zhipu import ZhipuProvider
+    from server.agent import ReActAgent
+    from server.llm.zhipu import ZhipuProvider
 
     # 创建LLM Provider
     llm_provider = ZhipuProvider()
@@ -70,11 +70,12 @@ async def fresh_agent():
     yield agent
 
     # 清理：Agent没有需要显式清理的资源
+    # 注意：这里不需要显式清理，pytest-asyncio会处理
 
 @pytest.fixture
 def fresh_history():
     """为每个测试创建新的对话历史"""
-    from src.storage.history import ConversationHistory
+    from server.storage.history import ConversationHistory
     from uuid import uuid4
 
     # 创建新的对话历史，使用唯一的session_id

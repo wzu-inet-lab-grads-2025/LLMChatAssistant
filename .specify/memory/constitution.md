@@ -1,49 +1,41 @@
 <!--
 同步报告:
 
-版本更改: 1.4.2 → 1.5.1 (MINOR - 添加Agent工具设计原则和混合检索策略规范)
+版本更改: 1.5.1 → 1.6.0 (MINOR - 添加客户端架构和部署原则)
 
-修改的原则:
-- 多层防御策略 (Defense in Depth) → 扩展，增加工具设计的安全要求
-- 可审计性与透明性 (Auditability & Transparency) → 扩展，增加工具执行审计要求
+修改的原则: 无
 
 添加的原则:
-- 工具职责单一原则 (Single Responsibility Principle for Tools)
-- 协议层分离原则 (Protocol Layer Separation Principle)
-- 工具语义清晰原则 (Tool Semantic Clarity Principle)
-- 代码复用与继承原则 (Code Reuse and Inheritance Principle)
-- 混合检索策略原则 (Hybrid Search Strategy Principle) - v1.5.1新增
-- Agent工具清单规范 (Agent Tool Inventory Specification)
+- 客户端独立性原则 (Client Independence Principle) - v1.6.0新增
+- 多前端适配器模式原则 (Multi-Frontend Adapter Pattern Principle) - v1.6.0新增
+- 配置驱动部署原则 (Configuration-Driven Deployment Principle) - v1.6.0新增
 
 删除的原则: 无
 
 需要更新的模板:
 - ✅ .specify/memory/constitution.md - 已更新
-- ⚠️ .specify/templates/spec-template.md - MUST添加工具设计约束部分
-- ⚠️ .specify/templates/plan-template.md - MUST添加工具设计审查检查项
-- ⚠️ .specify/templates/tasks-template.md - MUST添加工具实现任务类型
+- ⚠️ .specify/templates/spec-template.md - MUST添加客户端架构约束部分
+- ⚠️ .specify/templates/plan-template.md - MUST添加客户端架构审查检查项
+- ⚠️ .specify/templates/tasks-template.md - MUST添加客户端重构任务类型
 
-审查备注 (2025-12-31):
-- 工具设计从7个减少到5个，消除90%代码重复（RAG + file_semantic_search合并）
-- file_upload工具重新定位：从"处理文件上传"改为"文件索引和上下文管理"
-- 明确Agent职责边界：决策层/协调层/交互层，协议层负责实际数据传输
-- 支持文件上传时同时发送用户说明（CLI: /upload filepath 用户说明，Web: 上传按钮+文本框）
-- 设计原则核心：职责单一、安全第一、协议分离、语义清晰、代码复用、混合检索
-- Session扩展：添加uploaded_files和upload_state字段，支持文件索引管理
-- 混合检索策略：文件检索必须支持精确匹配、模糊匹配、语义检索三层策略（v1.5.1）
+审查备注 (2026-01-01):
+- 确定客户端架构：单仓库多包（monorepo）模式
+- 客户端完全独立：独立的协议定义副本（client/protocols/），独立的依赖管理（client/pyproject.toml）
+- 多前端支持：CLI（Python直接运行）、Web（服务器提供）、Desktop（PyInstaller打包.exe）
+- 适配器模式解耦：前端应用层 → 适配器层 → 服务层 → 协议层/核心层
+- 配置驱动部署：通过config.yaml管理服务器连接，支持本地和远程部署
+- 设计原则扩展：职责单一、安全第一、协议分离、客户端独立、多前端支持、配置驱动
 
-后续 TODO:
-- [REQUIRED] 合并src/tools/rag.py和src/tools/file_search.py为src/tools/semantic_search.py
-- [REQUIRED] 重新定义src/tools/file_upload.py为文件索引管理工具
-- [REQUIRED] 扩展Session类，添加uploaded_files和upload_state字段
-- [REQUIRED] 更新src/server/agent.py工具注册，删除RAG和file_semantic_search，添加新的semantic_search
-- [REQUIRED] 更新Agent系统提示词，反映新的工具清单和使用场景
-- [REQUIRED] 实施混合检索策略（关键字+语义），提升精确文件名匹配准确率（已提升为v1.5.1强制性原则）
-- [REQUIRED] 实施结构化错误处理，支持ErrorType枚举和自我修正机制
-- [OPTIONAL] 实施异步命令执行（command_executor_async），支持长时运行命令
-- [REQUIRED] 更新功能测试用例，验证新的工具清单和调用链
-- [REQUIRED] 在docs/目录添加工具设计规范文档，详细说明5个工具的职责边界
-- [REQUIRED] 实施混合检索测试，验证精确匹配、模糊匹配、语义检索三层策略
+后续 TODO (更新于 2026-01-01):
+- [PENDING] ⏳ 实施客户端架构重构（Phase 0-9，详见计划文档）
+- [PENDING] ⏳ 创建client/目录结构，包含protocols/、transport/、core/、services/、adapters/、ui/、frontends/、config/
+- [PENDING] ⏳ 复制协议定义到client/protocols/（nplt.py、rdt.py）
+- [PENDING] ⏳ 实现适配器模式（CLIAdapter、DesktopAdapter）
+- [PENDING] ⏳ 添加配置文件管理（client/config/config.yaml）
+- [PENDING] ⏳ 创建PyInstaller打包脚本（scripts/build_desktop.py）
+- [PENDING] ⏳ 编写客户端独立性测试
+- [PENDING] ⏳ 编写多前端一致性测试
+- [PENDING] ⏳ 编写PyInstaller打包测试
 -->
 
 # LLMChatAssistant 项目章程
@@ -180,6 +172,24 @@ Agent工具MUST精简且必要，工具总数SHOULD控制在5-7个范围内。�
 - 删除重复工具，工具总数从7个减少到5个（v1.5.0）
 - 添加混合检索策略原则（v1.5.1），要求semantic_search实施精确/模糊/语义三层检索
 
+### 客户端独立性原则 (Client Independence Principle)
+
+客户端MUST完全独立于服务器代码，拥有自己的协议定义副本。client/目录MUST包含完整的协议定义（client/protocols/nplt.py、client/protocols/rdt.py），MUST不依赖src/protocols/中的服务器代码。客户端MUST有独立的依赖管理（client/pyproject.toml），定义自己的依赖包。客户端MUST能够独立安装和部署，无需服务器代码。客户端协议定义MUST与服务器协议定义保持同步，通过版本检查机制验证兼容性。客户端和服务器MUST独立演进，协议变更时MUST更新双方定义。
+
+**理由**: 客户端独立部署能力是系统架构的关键需求。用户需要在Windows设备上安装CLI或Desktop客户端，连接到远程服务器，而无需整个服务器代码库。独立的协议定义使客户端可以单独分发和打包，降低部署复杂度。独立的依赖管理允许客户端依赖与服务器依赖不同，避免版本冲突。版本检查机制确保协议兼容性，防止不匹配的客户端和服务器通信失败。这种架构支持单仓库多包（monorepo）模式，客户端和服务器在同一仓库中，但可以独立开发和发布。
+
+### 多前端适配器模式原则 (Multi-Frontend Adapter Pattern Principle)
+
+系统MUST实现多前端架构，支持CLI、Web、Desktop三种前端类型。Web前端MUST由服务器直接提供，用户通过浏览器访问，无需独立客户端。CLI客户端MUST使用Python直接运行，支持本地连接（localhost）和远程连接（服务器IP）。Desktop客户端MUST使用PyInstaller打包成独立.exe文件，在Windows设备上安装运行，连接远程服务器。系统MUST使用适配器模式解耦前端和后端：前端应用层（frontends/）依赖适配器层（adapters/），适配器层依赖服务层（services/），服务层依赖协议层（protocols/）和核心层（core/）。每个前端MUST有独立的适配器实现（CLIAdapter、DesktopAdapter），共享相同的服务层和协议层。UI组件MUST可替换（RichUI、DesktopUI），通过UIInterface基类解耦。配置文件MUST支持本地和远程服务器配置（config.yaml中的server.host和server.port）。
+
+**理由**: 多前端架构满足不同用户场景的需求。Web前端无需安装，跨平台使用，适合临时用户。CLI客户端适合开发者和高级用户，支持脚本自动化。Desktop客户端适合普通Windows用户，提供原生GUI体验。适配器模式解耦前端和后端，使新前端可以轻松添加（如未来添加移动端），无需修改核心业务逻辑。共享服务层和协议层避免代码重复，确保所有前端行为一致。可替换的UI组件使前端可以独立优化UI体验，而不影响业务逻辑。配置驱动的服务器连接支持灵活的部署场景（本地开发、远程生产、云服务器）。
+
+### 配置驱动部署原则 (Configuration-Driven Deployment Principle)
+
+客户端MUST通过配置文件（config.yaml）管理所有部署配置。配置文件MUST包含：服务器连接配置（server.host、server.port、server.rdt_port）、连接参数（timeout、auto_reconnect、max_retries）、客户端配置（default_model、max_file_size、log_level）、UI配置（terminal_type、stream_speed、enable_colors）。配置文件MUST支持多层查找：命令行指定（--config）、当前目录（./config/config.yaml）、用户目录（~/.llmchat/config.yaml）、内置默认配置。配置优先级MUST为：命令行参数 > 配置文件 > 默认配置。打包时MUST包含配置文件模板（config.yaml.example），用户首次运行时自动生成默认配置。客户端MUST在启动时加载配置并验证连接参数。
+
+**理由**: 配置驱动部署使客户端可以适应不同环境而无需修改代码。用户可以轻松切换服务器地址（本地测试、远程生产），调整连接参数（超时、重连次数），优化UI体验（流式输出速度、颜色支持）。多层查找机制提供灵活性：开发时使用项目配置，部署时使用系统配置，临时测试使用命令行覆盖。配置模板降低使用门槛，用户可以基于模板快速配置。自动生成默认配置提供良好的首次体验，用户可以立即使用，后续根据需要自定义。配置驱动支持灵活的分发策略：开发版、测试版、生产版可以使用不同的配置文件，无需修改代码。
+
 ## 技术约束
 
 - **Python 版本**: MUST 使用 Python 3.11
@@ -212,6 +222,14 @@ Agent工具MUST精简且必要，工具总数SHOULD控制在5-7个范围内。�
 - **数据传输格式**: 实时聊天消息MUST使用纯文本，历史记录批量传输MUST使用JSON格式（保留tool_calls、timestamp等结构化数据）
 - **协议文档**: 协议格式、消息流和调用链路MUST记录在docs/目录（message-flow-analysis.md、protocol-call-chain.md）
 - **工具设计文档**: 工具清单、职责边界、输入输出格式MUST记录在docs/目录（agent_complete_specification.md）
+- **客户端独立性**: 客户端MUST有独立的协议定义副本（client/protocols/），MUST不依赖src/protocols/服务器代码
+- **客户端依赖**: 客户端MUST有独立的依赖管理（client/pyproject.toml），MUST能够独立安装和部署
+- **协议同步**: 客户端和服务器协议定义MUST保持同步，MUST通过版本检查机制验证兼容性
+- **多前端架构**: 系统MUST支持CLI、Web、Desktop三种前端，Web前端由服务器直接提供，CLI和Desktop客户端可独立部署
+- **适配器模式**: 前端应用层MUST通过适配器层访问服务层，每个前端MUST有独立的适配器实现（CLIAdapter、DesktopAdapter）
+- **配置驱动**: 客户端MUST通过config.yaml管理部署配置，MUST支持多层查找（命令行、当前目录、用户目录、默认配置）
+- **PyInstaller打包**: Desktop客户端MUST支持PyInstaller打包成独立.exe文件，MUST包含配置文件模板
+- **服务器连接**: 客户端配置MUST支持本地连接（localhost）和远程连接（服务器IP），MUST通过server.host和server.port配置
 
 ## 测试要求
 
@@ -244,6 +262,14 @@ Agent工具MUST精简且必要，工具总数SHOULD控制在5-7个范围内。�
 - **match_type字段测试**: MUST 测试检索结果包含match_type字段（exact_filename/fuzzy_filename/semantic）
 - **scope过滤测试**: MUST 测试scope参数（all/system/uploads）正确过滤检索范围
 - **结果去重测试**: MUST 测试多层检索结果合并去重，不返回重复文件
+- **客户端独立性测试**: MUST 测试客户端可以独立安装和运行，不依赖服务器代码
+- **协议同步测试**: MUST 测试客户端和服务器协议版本检查，验证兼容性
+- **多前端测试**: MUST 测试CLI、Web、Desktop三种前端功能一致性
+- **适配器模式测试**: MUST 测试前端通过适配器访问服务层，验证解耦效果
+- **配置加载测试**: MUST 测试多层配置查找（命令行、当前目录、用户目录、默认配置）
+- **远程连接测试**: MUST 测试客户端连接远程服务器，验证配置文件中的server.host和server.port
+- **PyInstaller打包测试**: MUST 测试Desktop客户端打包成.exe后的功能完整性
+- **配置文件测试**: MUST 测试配置文件包含所有必需字段，MUST测试首次运行自动生成默认配置
 
 ## 治理
 
@@ -272,5 +298,7 @@ Agent工具MUST精简且必要，工具总数SHOULD控制在5-7个范围内。�
 - 工具设计变更 MUST 经过设计评审，确认是否符合工具职责单一原则
 - 新增工具 MUST 评估是否与现有工具重复，是否可以通过扩展现有工具实现
 - 文件检索工具 MUST 验证是否实施混合检索策略（精确/模糊/语义三层）
+- 客户端架构变更 MUST 验证是否符合客户端独立性原则
+- 多前端实现 MUST 验证是否使用适配器模式解耦前端和后端
 
-**版本**: 1.5.1 | **批准日期**: 2025-12-28 | **最后修正**: 2025-12-31
+**版本**: 1.6.0 | **批准日期**: 2025-12-28 | **最后修正**: 2026-01-01

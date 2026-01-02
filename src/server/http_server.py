@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from aiohttp import web
-from ..storage.files import UploadedFile
+from storage.files import UploadedFile
 
 
 # 配置日志

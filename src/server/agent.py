@@ -11,17 +11,16 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from ..llm.base import LLMProvider, Message
-from ..storage.history import ConversationHistory, ToolCall
-from ..tools.base import Tool, ToolExecutionResult
-from ..tools.command import CommandTool
-from ..tools.monitor import MonitorTool
-from ..tools.rag import RAGTool
-from ..tools.file_upload import FileUploadTool
-from ..tools.file_download import FileDownloadTool
-from ..tools.file_search import FileSemanticSearchTool
-from ..utils.path_validator import get_path_validator
-from ..utils.config import get_config
+from llm.base import LLMProvider, Message
+from storage.history import ConversationHistory, ToolCall
+from tools.base import Tool, ToolExecutionResult
+from tools.command import CommandTool
+from tools.monitor import MonitorTool
+from tools.semantic_search import SemanticSearchTool
+from tools.file_upload import FileUploadTool
+from tools.file_download import FileDownloadTool
+from utils.path_validator import get_path_validator
+from utils.config import get_config
 
 
 @dataclass
@@ -41,9 +40,9 @@ class ReActAgent:
         """初始化工具"""
         # 如果没有提供工具，使用默认工具
         if not self.tools:
-            from ..storage.vector_store import VectorStore
-            from ..storage.index_manager import IndexManager
-            from ..server.rdt_server import RDTServer
+            from storage.vector_store import VectorStore
+            from storage.index_manager import IndexManager
+            from server.rdt_server import RDTServer
 
             # 获取配置
             config = get_config()
@@ -71,34 +70,29 @@ class ReActAgent:
                 )
 
             # 创建工具实例（带路径验证器）
+            # Constitution v1.5.1 - Agent工具清单规范：5个工具
             self.tools = {
                 "command_executor": CommandTool(
                     path_validator=self.path_validator,
                     max_output_size=config.file_access.max_output_size
                 ),
                 "sys_monitor": MonitorTool(),
-                "rag_search": RAGTool(
+                # 语义检索工具（合并RAG和file_semantic_search，实施混合检索策略）
+                "semantic_search": SemanticSearchTool(
                     llm_provider=self.llm_provider,
                     vector_store=vector_store,
                     index_manager=index_manager,
                     path_validator=self.path_validator,
                     auto_index=config.file_access.auto_index
                 ),
-                # 文件操作工具
-                "file_upload": FileUploadTool(
-                    index_manager=index_manager,
-                    storage_dir="storage/uploads"
-                ),
+                # 文件索引管理工具（重新定义：不处理文件上传，由协议层处理）
+                "file_upload": FileUploadTool(),
+                # 文件下载准备工具
                 "file_download": FileDownloadTool(
                     path_validator=self.path_validator,
                     rdt_server=self.rdt_server,
                     http_base_url=self.http_base_url,
                     client_type="cli"  # 默认CLI客户端
-                ),
-                "file_semantic_search": FileSemanticSearchTool(
-                    llm_provider=self.llm_provider,
-                    vector_store=vector_store,
-                    index_manager=index_manager
                 )
             }
 
@@ -314,10 +308,9 @@ class ReActAgent:
 **步骤1: 识别查询类型**
 - 系统资源查询（CPU/内存/磁盘使用率、系统状态）→ sys_monitor（优先）
 - 具体命令名执行（ls/cat/grep/head/tail/ps/pwd/whoami/df/free）→ command_executor
-- 文档/代码搜索（搜索文档、查找说明、检索信息）→ rag_search
-- 文件上传（上传文件、发送文件给你）→ file_upload
-- 文件下载（下载文件、发给我、把XX文件发给我）→ file_download
-- 文件语义检索（搜索XX文件、找找关于XX的文档、有没有XX文档）→ file_semantic_search
+- 文件/文档检索（搜索文件、查找文档、检索信息）→ semantic_search（支持混合检索策略：精确匹配→模糊匹配→语义检索）
+- 文件索引管理（查看上传的文件、引用文件）→ file_upload
+- 文件下载（下载文件、发给我、把XX文件发给我）→ file_download（先用semantic_search定位，再用file_download准备下载）
 - 问候/闲聊 → 直接回答
 
 **步骤2: 匹配命令到工具**
@@ -396,32 +389,46 @@ ARGS: {"metric": "disk"}
 TOOL: sys_monitor
 ARGS: {"metric": "all"}
 
-### rag_search 示例
+### semantic_search 示例（混合检索策略）
 
-用户: 搜索文档中关于配置的说明
-TOOL: rag_search
-ARGS: {"query": "配置说明"}
+用户: 搜索配置文件
+TOOL: semantic_search
+ARGS: {"query": "config.yaml", "top_k": 3}
+# 精确文件名匹配 → similarity=1.0, match_type=exact_filename
 
-用户: 查找关于日志的文档
-TOOL: rag_search
-ARGS: {"query": "日志"}
+用户: 搜索关于数据库的文档
+TOOL: semantic_search
+ARGS: {"query": "数据库配置", "top_k": 3, "scope": "all"}
+# 语义检索 → 返回相关文档及其匹配片段
+
+用户: 找一下日志文件
+TOOL: semantic_search
+ARGS: {"query": "log", "top_k": 5}
+# 模糊匹配 → 返回所有包含"log"的文件（.log文件）
 
 ### 文件操作示例
 
-用户: 我有一个文件要上传
+# 文件索引管理（file_upload - 重新定义为索引管理工具）
+用户: 查看上传的文件
 TOOL: file_upload
-ARGS: {"filename": "config.yaml", "content": "server:\n  port: 8080", "content_type": "application/yaml"}
+ARGS: {"action": "list", "reference": "all"}
 
+用户: 这个文件的内容是什么？
+TOOL: file_upload
+ARGS: {"action": "list", "reference": "this"}
+
+# 串行工具调用：先搜索再下载
 用户: 把配置文件发给我
-TOOL: file_semantic_search
-ARGS: {"query": "配置文件", "top_k": 3}
-# 找到文件后，再执行:
+TOOL: semantic_search
+ARGS: {"query": "config.yaml", "top_k": 1}
+# 第1步：精确匹配找到文件
+# 第2步：准备下载
 TOOL: file_download
 ARGS: {"file_path": "/home/zhoutianyu/tmp/LLMChatAssistant/storage/uploads/550e8400/config.yaml"}
 
 用户: 搜索数据库配置文档
-TOOL: file_semantic_search
-ARGS: {"query": "数据库配置", "top_k": 3}
+TOOL: semantic_search
+ARGS: {"query": "数据库配置", "top_k": 3, "scope": "all"}
 
 ## 负例（不需要工具）
 

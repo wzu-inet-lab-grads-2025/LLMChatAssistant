@@ -17,10 +17,10 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from .base import Tool, ToolExecutionResult
-from llm.base import LLMProvider
-from storage.vector_store import VectorStore
-from storage.index_manager import IndexManager
-from utils.path_validator import PathValidator
+from shared.llm.base import LLMProvider
+from shared.storage.vector_store import VectorStore
+from shared.storage.index_manager import IndexManager
+from shared.utils.path_validator import PathValidator
 
 
 # 配置日志

@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from ..utils.path_validator import PathValidator
+from utils.path_validator import PathValidator
 
 
 class IndexManager:

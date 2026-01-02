@@ -12,8 +12,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Callable, Dict, Optional, Tuple
 
-from ..protocols.nplt import MessageType, NPLTMessage
-from ..storage.history import ConversationHistory, SessionManager
+from protocols.nplt import MessageType, NPLTMessage
+from storage.history import ConversationHistory, SessionManager
 
 
 class SessionState(Enum):
@@ -27,7 +27,7 @@ class SessionState(Enum):
 
 @dataclass
 class Session:
-    """客户端会话"""
+    """客户端会话（扩展版，支持文件索引管理）"""
 
     session_id: str                              # 会话唯一标识 (UUID)
     client_addr: Tuple[str, int]                 # 客户端地址 (IP, Port)
@@ -39,7 +39,27 @@ class Session:
     send_seq: int = 0                            # 发送序列号
     recv_seq: int = 0                            # 接收序列号
     conversation_history: Optional[ConversationHistory] = None  # 对话历史
-    upload_state: Optional[Dict] = None  # 文件上传状态
+
+    # 文件上传相关字段（Constitution v1.5.1）
+    uploaded_files: list = field(default_factory=lambda: [])  # 已上传文件元数据列表
+    # [{
+    #     "file_id": "abc123-def456",
+    #     "filename": "config.yaml",
+    #     "file_path": "/storage/uploads/abc123/config.yaml",
+    #     "uploaded_at": datetime(2025, 12, 31, 8, 0, 0),
+    #     "size": 1024,
+    #     "indexed": True
+    # }]
+
+    upload_state: Optional[Dict] = field(default_factory=dict)  # 当前上传状态
+    # {
+    #     "file_id": "abc123",
+    #     "filename": "config.yaml",
+    #     "file_size": 1024,
+    #     "received_data": [],
+    #     "received_size": 0
+    # }
+
     client_type: str = "cli"                     # 客户端类型：cli | web | desktop
 
     HEARTBEAT_TIMEOUT = 90  # 心跳超时时间（秒）
@@ -129,6 +149,46 @@ class Session:
         except Exception:
             pass
         self.state = SessionState.DISCONNECTED
+
+    # ===== 文件索引管理方法（Constitution v1.5.1） =====
+
+    def get_last_uploaded_file(self) -> Optional[dict]:
+        """获取最后上传的文件
+
+        Returns:
+            最后上传的文件元数据字典，如果不存在则返回None
+        """
+        if not self.uploaded_files:
+            return None
+        return self.uploaded_files[-1]
+
+    def get_uploaded_file(self, file_id: str) -> Optional[dict]:
+        """根据file_id获取文件信息
+
+        Args:
+            file_id: 文件ID
+
+        Returns:
+            文件元数据字典，如果不存在则返回None
+        """
+        for file_info in self.uploaded_files:
+            if file_info.get("file_id") == file_id:
+                return file_info
+        return None
+
+    def add_uploaded_file(self, file_info: dict):
+        """记录上传的文件
+
+        Args:
+            file_info: 文件元数据字典，必须包含:
+                - file_id: 文件ID
+                - filename: 文件名
+                - file_path: 文件路径
+                - uploaded_at: 上传时间
+                - size: 文件大小
+                - indexed: 是否已索引
+        """
+        self.uploaded_files.append(file_info)
 
 
 @dataclass
@@ -329,7 +389,7 @@ class NPLTServer:
                 if self.chat_handler:
                     try:
                         # 设置 Agent 的状态回调（用于发送状态更新）
-                        from ..server.agent import ReActAgent
+                        from server.agent import ReActAgent
                         if isinstance(self.chat_handler, ReActAgent):
                             self.chat_handler.status_callback = lambda msg: session.send_status_json(msg)
 
@@ -465,7 +525,7 @@ class NPLTServer:
     
     async def _handle_file_data(self, session: Session, message: NPLTMessage):
         """处理文件数据"""
-        from ..storage.files import UploadedFile
+        from storage.files import UploadedFile
         
         try:
             if not session.upload_state:
