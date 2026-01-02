@@ -86,12 +86,49 @@ class Server:
 
             # 初始化 ReAct Agent
             self.logger.info("初始化 ReAct Agent...")
+
+            # 初始化路径验证器
+            from server.tools.command import CommandTool
+            from server.tools.monitor import MonitorTool
+            from server.tools.semantic_search import SemanticSearchTool
+            from server.tools.file_upload import FileUploadTool
+            from server.tools.file_download import FileDownloadTool
+            from server.storage.index_manager import IndexManager
+            from shared.utils.path_validator import get_path_validator
+
+            path_validator = get_path_validator(self.config.file_access)
+
+            # 初始化索引管理器
+            index_manager = IndexManager(
+                vector_store=self.vector_store,
+                llm_provider=self.llm_provider,
+                path_validator=path_validator,
+                config=self.config.file_access
+            )
+
+            # 创建工具实例
             self.agent = ReActAgent(
                 llm_provider=self.llm_provider,
                 tools={
-                    "command_executor": CommandTool(),
+                    "command_executor": CommandTool(
+                        path_validator=path_validator,
+                        max_output_size=self.config.file_access.max_output_size
+                    ),
                     "sys_monitor": MonitorTool(),
-                    "semantic_search": SemanticSearchTool(self.llm_provider, self.vector_store)
+                    "semantic_search": SemanticSearchTool(
+                        llm_provider=self.llm_provider,
+                        vector_store=self.vector_store,
+                        index_manager=index_manager,
+                        path_validator=path_validator,
+                        auto_index=self.config.file_access.auto_index
+                    ),
+                    "file_upload": FileUploadTool(),
+                    "file_download": FileDownloadTool(
+                        path_validator=path_validator,
+                        rdt_server=self.rdt_server,
+                        http_base_url=f"http://{self.config.server.host}:{self.config.server.port}",
+                        client_type="cli"
+                    )
                 },
                 max_tool_rounds=5,
                 tool_timeout=5
