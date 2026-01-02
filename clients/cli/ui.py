@@ -703,11 +703,12 @@ class ClientUI:
         response = self.console.input(f"[yellow]{message} [y/N]: [/yellow]")
         return response.lower() in ['y', 'yes']
 
-    def input(self, prompt: str = "") -> str:
+    def input(self, prompt: str = "", clear_after_input: bool = False) -> str:
         """获取用户输入
 
         Args:
             prompt: 提示符
+            clear_after_input: 是否在输入后清除输入行（默认False）
 
         Returns:
             用户输入
@@ -737,8 +738,16 @@ class ClientUI:
                 with patch_stdout():
                     user_input = self.session.prompt(ANSI(ansi_prompt))
 
-                # 打印换行符，隔离输入行和后续显示
-                print()  # 这会清除prompt_toolkit输入行的视觉残留
+                # 如果需要清除输入行
+                if clear_after_input:
+                    # prompt_toolkit 输入后已经换行，需要清除上一行
+                    # 使用 ANSI 转义序列：\033[F 移到上一行开头，\033[K 清除到行尾
+                    import sys
+                    sys.stdout.write("\033[F\033[K")
+                    sys.stdout.flush()
+                else:
+                    # 打印换行符，隔离输入行和后续显示
+                    print()
 
                 return user_input.strip()
             except EOFError:
@@ -749,6 +758,13 @@ class ClientUI:
             # 回退到使用 Rich 自带的 input 方法
             try:
                 user_input = self.console.input(prompt)
+
+                # 如果需要清除输入行
+                if clear_after_input:
+                    # 使用 ANSI 转义序列清除当前行并回到行首
+                    # \r 回到行首，\x1b[2K 清除整行
+                    self.console.print("\r\x1b[2K", end="")
+
                 return user_input.strip()
             except EOFError:
                 return ""

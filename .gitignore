@@ -81,3 +81,6 @@ issues/*.md
 # Temporary files
 *.tmp
 *.bak
+
+.claude/
+.roo/

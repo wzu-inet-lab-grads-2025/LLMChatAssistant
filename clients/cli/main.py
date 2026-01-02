@@ -83,8 +83,8 @@ class ClientMain:
         # 主循环
         while self.running and self.client.is_connected():
             try:
-                # 获取用户输入
-                user_input = await asyncio.to_thread(self.ui.input, "User> ")
+                # 获取用户输入（清除输入行以避免重复显示）
+                user_input = await asyncio.to_thread(self.ui.input, "User> ", clear_after_input=True)
 
                 if not user_input:
                     continue
