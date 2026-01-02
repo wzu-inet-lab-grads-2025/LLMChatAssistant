@@ -186,7 +186,8 @@ class Server:
 
             async for chunk in self.agent.think_stream(
                 user_message=message,
-                conversation_history=session.conversation_history
+                conversation_history=session.conversation_history,
+                session=session  # 传递 session 对象，让工具可以访问 uploaded_files
             ):
                 full_response += chunk
                 buffer += chunk

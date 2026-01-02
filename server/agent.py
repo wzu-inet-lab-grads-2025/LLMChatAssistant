@@ -5,20 +5,21 @@ ReAct Agent 模块
 遵循章程：真实实现，使用真实智谱 API，不允许虚假实现或占位符
 """
 
+import asyncio
 import json
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from shared.llm.base import LLMProvider, Message
-from shared.storage.history import ConversationHistory, ToolCall
-from src.tools.base import Tool, ToolExecutionResult
-from src.tools.command import CommandTool
-from src.tools.monitor import MonitorTool
-from src.tools.semantic_search import SemanticSearchTool
-from src.tools.file_upload import FileUploadTool
-from src.tools.file_download import FileDownloadTool
+from server.llm.base import LLMProvider, Message
+from server.storage.history import ConversationHistory, ToolCall
+from server.tools.base import Tool, ToolExecutionResult
+from server.tools.command import CommandTool
+from server.tools.monitor import MonitorTool
+from server.tools.semantic_search import SemanticSearchTool
+from server.tools.file_upload import FileUploadTool
+from server.tools.file_download import FileDownloadTool
 from shared.utils.path_validator import get_path_validator
 from shared.utils.config import get_config
 
@@ -40,8 +41,8 @@ class ReActAgent:
         """初始化工具"""
         # 如果没有提供工具，使用默认工具
         if not self.tools:
-            from storage.vector_store import VectorStore
-            from storage.index_manager import IndexManager
+            from server.storage.vector_store import VectorStore
+            from server.storage.index_manager import IndexManager
             from server.rdt_server import RDTServer
 
             # 获取配置
@@ -111,45 +112,65 @@ class ReActAgent:
             }, ensure_ascii=False)
             await self.status_callback(status_msg)
 
-    async def think_stream(self, user_message: str, conversation_history: ConversationHistory):
-        """思考并生成回复（流式输出）
+    async def think_stream(self, user_message: str, conversation_history: ConversationHistory, session=None):
+        """思考并生成回复（流式输出，支持ReAct工具调用）
 
         Args:
             user_message: 用户消息
             conversation_history: 对话历史
+            session: Session对象（用于工具访问uploaded_files等）
 
         Yields:
             str: 流式输出的文本片段
         """
+        import sys
+        # 强制写入调试文件
+        with open('/tmp/think_stream_debug.log', 'a') as f:
+            f.write(f"[{time.time()}] think_stream调用: {user_message[:50]}\n")
+            f.flush()
+
         try:
             # 发送状态：正在分析
             await self._send_status("thinking", "正在分析用户意图")
 
-            # 获取上下文
-            context = conversation_history.get_context(max_turns=5)
+            # 使用 ReAct 循环处理可能需要工具的请求
+            print(f"[DEBUG] think_stream: 开始，消息={user_message[:30]}", file=sys.stderr, flush=True)
+            final_response, tool_calls = await self.react_loop(
+                user_message=user_message,
+                conversation_history=conversation_history,
+                session=session
+            )
+            print(f"[DEBUG] think_stream: react_loop完成，工具调用次数={len(tool_calls)}", file=sys.stderr, flush=True)
 
-            # 构建消息列表
-            messages = []
-            for msg in context:
-                messages.append(Message(role=msg.role, content=msg.content))
-
-            # 添加当前用户消息
-            messages.append(Message(role="user", content=user_message))
+            with open('/tmp/think_stream_debug.log', 'a') as f:
+                f.write(f"[{time.time()}] react_loop完成，工具调用次数={len(tool_calls)}\n")
+                f.flush()
 
             # 发送状态：正在生成
             await self._send_status("generating", "正在生成回复")
 
-            # 调用 LLM 流式输出
-            async for chunk in self.llm_provider.chat_stream(
-                messages=messages,
-                temperature=0.7
-            ):
+            # 对最终回复进行流式输出
+            # 由于 react_loop 返回的是完整字符串，我们需要模拟流式输出
+            chunk_size = 2  # 每次发送2个字符
+            for i in range(0, len(final_response), chunk_size):
+                chunk = final_response[i:i + chunk_size]
                 yield chunk
+                # 添加小延迟模拟流式输出
+                await asyncio.sleep(0.01)
 
         except Exception as e:
             # API 调用失败，降级到本地命令执行
+            import sys
+            import traceback
+            print(f"[ERROR] think_stream异常: {e}", file=sys.stderr, flush=True)
+            traceback.print_exc(file=sys.stderr)
             fallback_response = self._fallback_to_local(user_message, str(e))
-            yield fallback_response
+            # 模拟流式输出
+            chunk_size = 2
+            for i in range(0, len(fallback_response), chunk_size):
+                chunk = fallback_response[i:i + chunk_size]
+                yield chunk
+                await asyncio.sleep(0.01)
 
     async def think(self, user_message: str, conversation_history: ConversationHistory) -> str:
         """思考并生成回复（非流式，保持向后兼容）
@@ -188,13 +209,15 @@ class ReActAgent:
     async def react_loop(
         self,
         user_message: str,
-        conversation_history: ConversationHistory
+        conversation_history: ConversationHistory,
+        session=None
     ) -> tuple[str, List[ToolCall]]:
         """ReAct 循环：推理 -> 行动 -> 观察
 
         Args:
             user_message: 用户消息
             conversation_history: 对话历史
+            session: Session对象（用于工具访问uploaded_files等）
 
         Returns:
             (最终回复, 工具调用列表)
@@ -211,6 +234,11 @@ class ReActAgent:
                 # 思考：调用 LLM 决定是否需要使用工具
                 await self._send_status("thinking", f"正在思考 (第 {round_count} 轮)")
                 thought = await self._think_and_decide(current_message, conversation_history)
+
+                # 调试：记录LLM返回
+                with open('/tmp/llm_response_debug.log', 'a') as f:
+                    f.write(f"\n=== 第{round_count}轮 LLM返回 ===\n{thought}\n{'='*50}\n")
+                    f.flush()
 
                 # 检查是否需要使用工具
                 tool_use = self._parse_tool_use(thought)
@@ -235,6 +263,10 @@ class ReActAgent:
                     continue
 
                 tool = self.tools[tool_name]
+
+                # 注入 session 到工具（如果工具支持）
+                if hasattr(tool, 'session') and session is not None:
+                    tool.session = session
 
                 # 发送状态：正在调用工具
                 await self._send_status("tool_call", f"正在调用工具: {tool_name}")
