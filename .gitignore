@@ -84,3 +84,5 @@ issues/*.md
 
 .claude/
 .roo/
+
+tests/

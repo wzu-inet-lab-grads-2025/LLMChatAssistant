@@ -28,25 +28,42 @@ class ToolCall:
 
     def to_dict(self) -> dict:
         """转换为字典"""
+        # 防御性编程：处理 timestamp 可能是字符串的情况
+        if isinstance(self.timestamp, datetime):
+            timestamp_str = self.timestamp.isoformat()
+        elif isinstance(self.timestamp, str):
+            timestamp_str = self.timestamp
+        else:
+            print(f"[WARN] ToolCall.to_dict: timestamp 类型异常 {type(self.timestamp)}, 使用当前时间")
+            timestamp_str = datetime.now().isoformat()
+
         return {
             "tool_name": self.tool_name,
             "arguments": self.arguments,
             "result": self.result,
             "status": self.status,
             "duration": self.duration,
-            "timestamp": self.timestamp.isoformat()
+            "timestamp": timestamp_str
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> 'ToolCall':
         """从字典创建实例"""
+        # 防御性编程：处理 timestamp 可能是 datetime 对象的情况
+        timestamp = data["timestamp"]
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+        elif not isinstance(timestamp, datetime):
+            print(f"[WARN] ToolCall.from_dict: timestamp 类型异常 {type(timestamp)}, 使用当前时间")
+            timestamp = datetime.now()
+
         return cls(
             tool_name=data["tool_name"],
             arguments=data["arguments"],
             result=data["result"],
             status=data["status"],
             duration=data["duration"],
-            timestamp=datetime.fromisoformat(data["timestamp"])
+            timestamp=timestamp
         )
 
 
@@ -61,10 +78,21 @@ class ChatMessage:
 
     def to_dict(self) -> dict:
         """转换为字典"""
+        # 防御性编程：处理 timestamp 可能是字符串的情况
+        if isinstance(self.timestamp, datetime):
+            timestamp_str = self.timestamp.isoformat()
+        elif isinstance(self.timestamp, str):
+            # 已经是字符串，直接使用
+            timestamp_str = self.timestamp
+        else:
+            # 其他类型，使用当前时间
+            print(f"[WARN] ChatMessage.to_dict: timestamp 类型异常 {type(self.timestamp)}, 使用当前时间")
+            timestamp_str = datetime.now().isoformat()
+
         return {
             "role": self.role,
             "content": self.content,
-            "timestamp": self.timestamp.isoformat(),
+            "timestamp": timestamp_str,
             "tool_calls": [tc.to_dict() for tc in self.tool_calls],
             "metadata": self.metadata
         }
@@ -72,10 +100,18 @@ class ChatMessage:
     @classmethod
     def from_dict(cls, data: dict) -> 'ChatMessage':
         """从字典创建实例"""
+        # 防御性编程：处理 timestamp 可能是 datetime 对象的情况
+        timestamp = data["timestamp"]
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+        elif not isinstance(timestamp, datetime):
+            print(f"[WARN] ChatMessage.from_dict: timestamp 类型异常 {type(timestamp)}, 使用当前时间")
+            timestamp = datetime.now()
+
         return cls(
             role=data["role"],
             content=data["content"],
-            timestamp=datetime.fromisoformat(data["timestamp"]),
+            timestamp=timestamp,
             tool_calls=[ToolCall.from_dict(tc) for tc in data.get("tool_calls", [])],
             metadata=data.get("metadata", {})
         )
@@ -118,6 +154,13 @@ class ConversationHistory:
         Returns:
             最近 N 轮对话的消息列表
         """
+        # 调试日志
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[DEBUG] get_context[{self.session_id[:8]}]: 总消息数={len(self.messages)}, max_turns={max_turns}")
+        for i, msg in enumerate(self.messages):
+            logger.info(f"[DEBUG]   消息[{i}]: role={msg.role}, content前50字符={repr(msg.content[:50])}")
+
         # 返回最近 max_turns * 2 条消息
         return self.messages[-max_turns*2:]
 
@@ -191,16 +234,27 @@ class ConversationHistory:
         """
         os.makedirs(storage_dir, exist_ok=True)
 
-        # 使用日期作为文件名
-        filename = f"session_{self.created_at.strftime('%Y%m%d')}_{self.session_id[:8]}.json"
+        # 使用日期和完整的 session_id 作为文件名（但限制长度以避免文件名过长）
+        # 对于短 session_id 直接使用，对于长的使用前32个字符
+        session_prefix = self.session_id if len(self.session_id) <= 32 else self.session_id[:32]
+        filename = f"session_{self.created_at.strftime('%Y%m%d')}_{session_prefix}.json"
         filepath = os.path.join(storage_dir, filename)
 
         # 序列化 uploaded_files（datetime 对象转为 ISO 字符串）
         uploaded_files_serialized = []
         for file_info in self.uploaded_files:
             file_copy = file_info.copy()
-            if isinstance(file_copy.get("uploaded_at"), datetime):
-                file_copy["uploaded_at"] = file_copy["uploaded_at"].isoformat()
+            uploaded_at = file_copy.get("uploaded_at")
+            # 处理各种可能的类型（防御性编程）
+            if isinstance(uploaded_at, datetime):
+                file_copy["uploaded_at"] = uploaded_at.isoformat()
+            elif isinstance(uploaded_at, str):
+                # 已经是字符串（ISO格式），直接使用
+                pass
+            else:
+                # 其他类型（None、数字等），使用当前时间
+                print(f"[WARN] uploaded_at 类型异常: {type(uploaded_at)}, 使用当前时间")
+                file_copy["uploaded_at"] = datetime.now().isoformat()
             uploaded_files_serialized.append(file_copy)
 
         data = {
@@ -228,33 +282,35 @@ class ConversationHistory:
         # 查找匹配的文件
         os.makedirs(storage_dir, exist_ok=True)
 
-        # 尝试找到匹配的会话文件
+        # 尝试找到匹配的会话文件（通过验证完整的 session_id）
         for filename in os.listdir(storage_dir):
-            if filename.startswith(f"session_") and session_id[:8] in filename:
+            if filename.startswith(f"session_") and filename.endswith(".json"):
                 filepath = os.path.join(storage_dir, filename)
                 try:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         data = json.load(f)
 
-                    # 反序列化 uploaded_files（ISO 字符串转为 datetime）
-                    uploaded_files = []
-                    for file_info in data.get("uploaded_files", []):
-                        file_copy = file_info.copy()
-                        if "uploaded_at" in file_copy:
-                            if isinstance(file_copy["uploaded_at"], str):
-                                file_copy["uploaded_at"] = datetime.fromisoformat(file_copy["uploaded_at"])
-                        uploaded_files.append(file_copy)
+                    # 验证完整的 session_id 是否匹配
+                    if data.get("session_id") == session_id:
+                        # 反序列化 uploaded_files（ISO 字符串转为 datetime）
+                        uploaded_files = []
+                        for file_info in data.get("uploaded_files", []):
+                            file_copy = file_info.copy()
+                            if "uploaded_at" in file_copy:
+                                if isinstance(file_copy["uploaded_at"], str):
+                                    file_copy["uploaded_at"] = datetime.fromisoformat(file_copy["uploaded_at"])
+                            uploaded_files.append(file_copy)
 
-                    return cls(
-                        session_id=data["session_id"],
-                        messages=[ChatMessage.from_dict(msg) for msg in data["messages"]],
-                        uploaded_files=uploaded_files,
-                        created_at=datetime.fromisoformat(data["created_at"]),
-                        updated_at=datetime.fromisoformat(data["updated_at"])
-                    )
+                        return cls(
+                            session_id=data["session_id"],
+                            messages=[ChatMessage.from_dict(msg) for msg in data["messages"]],
+                            uploaded_files=uploaded_files,
+                            created_at=datetime.fromisoformat(data["created_at"]),
+                            updated_at=datetime.fromisoformat(data["updated_at"])
+                        )
                 except Exception as e:
                     print(f"警告：加载对话历史失败 {filename}: {e}")
-                    return None
+                    continue
 
         return None
 
@@ -299,12 +355,25 @@ class ConversationSession:
 
     def to_dict(self) -> dict:
         """序列化为字典"""
+        # 防御性编程：处理各种可能的类型
+        def safe_isoformat(value):
+            """安全地转换为 ISO 格式字符串"""
+            if isinstance(value, datetime):
+                return value.isoformat()
+            elif isinstance(value, str):
+                # 已经是字符串，直接返回
+                return value
+            else:
+                # 其他类型，转换或使用默认值
+                print(f"[WARN] to_dict: 异常类型 {type(value)}, 使用当前时间")
+                return datetime.now().isoformat()
+
         return {
             'session_id': self.session_id,
             'name': self.name,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat(),
-            'last_accessed': self.last_accessed.isoformat(),
+            'created_at': safe_isoformat(self.created_at),
+            'updated_at': safe_isoformat(self.updated_at),
+            'last_accessed': safe_isoformat(self.last_accessed),
             'message_count': self.message_count,
             'archived': self.archived,
             'archive_path': self.archive_path
@@ -344,11 +413,22 @@ class SessionInfo:
 
     def to_dict(self) -> dict:
         """序列化为字典"""
+        # 防御性编程：处理各种可能的类型
+        def safe_isoformat(value):
+            """安全地转换为 ISO 格式字符串"""
+            if isinstance(value, datetime):
+                return value.isoformat()
+            elif isinstance(value, str):
+                return value
+            else:
+                print(f"[WARN] SessionInfo.to_dict: 异常类型 {type(value)}, 使用当前时间")
+                return datetime.now().isoformat()
+
         return {
             'session_id': self.session_id,
             'name': self.name,
             'message_count': self.message_count,
-            'last_accessed': self.last_accessed.isoformat(),
+            'last_accessed': safe_isoformat(self.last_accessed),
             'is_current': self.is_current
         }
 
@@ -509,15 +589,27 @@ class SessionManager:
             print(f"错误：无法删除当前活动会话")
             return False
 
-        # 删除会话对应的对话历史文件
+        # 删除会话对应的对话历史文件（通过查找匹配的文件）
         session = self.sessions[session_id]
-        history_filename = f"session_{session.created_at.strftime('%Y%m%d')}_{session_id[:8]}.json"
-        history_filepath = os.path.join(self.storage_dir, history_filename)
-        if os.path.exists(history_filepath):
-            try:
-                os.remove(history_filepath)
-            except Exception as e:
-                print(f"警告：删除对话历史文件失败 {history_filepath}: {e}")
+
+        # 查找匹配的会话文件（通过验证 session_id）
+        deleted_history = False
+        if os.path.exists(self.storage_dir):
+            for filename in os.listdir(self.storage_dir):
+                if filename.startswith("session_") and filename.endswith(".json"):
+                    filepath = os.path.join(self.storage_dir, filename)
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            if data.get("session_id") == session_id:
+                                os.remove(filepath)
+                                deleted_history = True
+                                break
+                    except Exception as e:
+                        print(f"警告：检查会话文件失败 {filename}: {e}")
+
+        if not deleted_history:
+            print(f"警告：未找到会话 {session_id[:8]} 的对话历史文件")
 
         # 从内存中删除
         del self.sessions[session_id]
@@ -596,22 +688,27 @@ class SessionManager:
                 archive_month_dir = os.path.join(archive_dir, session.created_at.strftime("%Y-%m"))
                 os.makedirs(archive_month_dir, exist_ok=True)
 
-                # 移动会话文件
-                history_filename = f"session_{session.created_at.strftime('%Y%m%d')}_{session_id[:8]}.json"
-                src_path = os.path.join(self.storage_dir, history_filename)
-                dst_path = os.path.join(archive_month_dir, history_filename)
+                # 查找并移动会话文件（通过验证 session_id）
+                if os.path.exists(self.storage_dir):
+                    for filename in os.listdir(self.storage_dir):
+                        if filename.startswith("session_") and filename.endswith(".json"):
+                            src_path = os.path.join(self.storage_dir, filename)
+                            try:
+                                with open(src_path, 'r', encoding='utf-8') as f:
+                                    data = json.load(f)
+                                    if data.get("session_id") == session_id:
+                                        # 找到匹配的文件，移动它
+                                        dst_path = os.path.join(archive_month_dir, filename)
+                                        import shutil
+                                        shutil.move(src_path, dst_path)
 
-                if os.path.exists(src_path):
-                    try:
-                        import shutil
-                        shutil.move(src_path, dst_path)
-
-                        # 更新会话状态
-                        session.archived = True
-                        session.archive_path = dst_path
-                        archived_count += 1
-                    except Exception as e:
-                        print(f"警告：归档会话文件失败 {history_filename}: {e}")
+                                        # 更新会话状态
+                                        session.archived = True
+                                        session.archive_path = dst_path
+                                        archived_count += 1
+                                        break
+                            except Exception as e:
+                                print(f"警告：检查会话文件失败 {filename}: {e}")
 
         # 保存更新后的元数据
         if archived_count > 0:

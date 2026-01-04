@@ -43,15 +43,18 @@ class SemanticSearchTool(Tool):
     功能：
     1. 搜索系统文档（README、API文档、配置说明）
     2. 检索用户上传的文件（storage/uploads/）
-    3. 定位文件后，可用于回答问题或下载
+    3. 定位文件路径后，配合 command_executor 使用 cat/grep 查看内容
 
     适用场景：
-    - "搜索配置说明" → 定位README.md → 回答配置问题
-    - "找一下日志文件" → 定位app.log → 分析日志内容
-    - "数据库配置在哪里" → 定位config.yaml → 下载或分析
-    - "下载config.yaml" → 精确匹配 → 准备下载
+    - 用户想"找"、"搜索"、"定位"某个文件 → 使用此工具定位文件路径
+    - "搜索配置说明" → 定位README.md → 使用command_executor查看内容
+    - "找一下日志文件" → 定位app.log → 使用command_executor的cat/tail查看
+    - "config.yaml在哪里" → 定位config.yaml → 使用command_executor的cat查看
 
-    关键词：搜索、检索、查找、文档、文件、配置、日志
+    注意：
+    - 此工具用于定位文件，不是直接读取文件内容
+    - 定位到文件后，使用 command_executor 的 cat/head/tail/grep 查看内容
+    - 如果用户知道具体文件名，直接用 command_executor 更快
 
     参数：
     - query: 自然语言查询（必需）
@@ -90,9 +93,9 @@ class SemanticSearchTool(Tool):
         if not query or not query.strip():
             return False, "查询文本不能为空"
 
-        # 2. top_k 范围验证
-        if top_k < 1 or top_k > 10:
-            return False, "top_k 必须在 1-10 之间"
+        # 2. top_k 范围验证（允许 1-100 以支持更多结果）
+        if top_k < 1 or top_k > 100:
+            return False, "top_k 必须在 1-100 之间"
 
         # 3. scope 参数验证
         valid_scopes = ["all", "system", "uploads"]

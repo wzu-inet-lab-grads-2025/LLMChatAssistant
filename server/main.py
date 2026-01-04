@@ -172,6 +172,9 @@ class Server:
             # 集成会话管理器（T090）
             self.nplt_server.session_manager = self.session_manager
 
+            # 集成索引管理器（用于文件自动索引）
+            self.nplt_server.index_manager = index_manager
+
             # 启动 NPLT 服务器
             await self.nplt_server.start()
 
@@ -248,8 +251,15 @@ class Server:
             if stream_started:
                 await session.send_stream_end()
 
-            # 添加助手响应到历史
-            session.conversation_history.add_message("assistant", full_response)
+            # 保存助手响应到历史（注意：think_stream是generator，无法在其中保存）
+            # 检查是否已经在_react_loop_with_tools中保存（通过检查历史记录的最后一条消息）
+            last_message = session.conversation_history.messages[-1] if session.conversation_history.messages else None
+            if not last_message or last_message.role != "assistant":
+                # 如果最后一条不是助手消息，说明需要保存
+                session.conversation_history.add_message(
+                    role="assistant",
+                    content=full_response
+                )
 
             # 保存对话历史到磁盘
             session.conversation_history.save()

@@ -161,6 +161,55 @@ class IndexManager:
 
         return results
 
+    def index_file(self, file_path: str, file_id: Optional[str] = None) -> dict:
+        """同步索引文件（用于非异步上下文）
+
+        注意：此方法会阻塞直到索引完成。如果在异步上下文中，请使用 ensure_indexed()。
+
+        Args:
+            file_path: 文件路径
+            file_id: 文件 ID（可选，如果不提供则自动生成）
+
+        Returns:
+            {"success": bool, "message": str, "file_id": str}
+        """
+        try:
+            # 1. 验证路径
+            allowed, msg = self.path_validator.is_allowed(file_path)
+            if not allowed:
+                return {"success": False, "error": f"文件访问被拒绝: {msg}", "file_id": file_id or ""}
+
+            # 2. 生成或使用提供的 file_id
+            if file_id is None:
+                file_id = self._generate_file_id(file_path)
+
+            # 3. 检查是否已索引
+            if file_id in self.vector_store.list_files():
+                return {"success": True, "message": "文件已索引", "file_id": file_id}
+
+            # 4. 同步运行异步索引函数
+            import asyncio
+            try:
+                # 尝试获取当前事件循环
+                loop = asyncio.get_running_loop()
+                # 如果已经在运行的事件循环中，无法使用 run_until_complete
+                # 这种情况应该使用 ensure_indexed() 而不是此方法
+                return {
+                    "success": False,
+                    "error": "不能在异步上下文中调用 index_file()，请使用 await ensure_indexed()",
+                    "file_id": file_id
+                }
+            except RuntimeError:
+                # 没有运行的事件循环，创建新的并运行
+                pass
+
+            # 创建新的事件循环并运行异步函数
+            success, msg = asyncio.run(self._create_index(file_path, file_id))
+            return {"success": success, "message": msg, "file_id": file_id}
+
+        except Exception as e:
+            return {"success": False, "error": f"索引创建失败: {str(e)}", "file_id": file_id or ""}
+
     def get_index_status(self, file_path: str) -> dict:
         """获取文件的索引状态
 

@@ -1,13 +1,16 @@
 """
-客户端 UI 模块 (修复版)
+客户端 UI 模块 (修复版 v2)
 
 修复内容：
 1. 移除导致显示异常的 ANSI 转义序列 [2K]。
-2. 优化手动边框渲染器，利用 pad=True 实现无痕刷新。
-3. 保持弹性缓冲算法，解决网络卡顿。
+2. 清理LLM生成的ANSI颜色码，防止显示乱码。
+3. 优化手动边框渲染器，利用 pad=True 实现无痕刷新。
+4. 保持弹性缓冲算法，解决网络卡顿。
 """
 
 import asyncio
+import re
+import logging
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
@@ -21,6 +24,9 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 from rich import box
+
+# 获取客户端logger
+logger = logging.getLogger(__name__)
 from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
@@ -36,6 +42,25 @@ try:
 except ImportError:
     # 如果没有安装，回退到Rich input
     HAS_PROMPT_TOOLKIT = False
+
+# ANSI转义码正则表达式（用于清理LLM生成的颜色码）
+ANSI_ESCAPE_PATTERN = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def clean_ansi_codes(text: str) -> str:
+    """清理文本中的ANSI转义码
+
+    LLM（如智谱AI）可能在生成回复时添加颜色码，
+    这些码在Rich Console中无法正确解析，会显示为乱码。
+    因此需要在显示前清理它们。
+
+    Args:
+        text: 包含ANSI码的文本
+
+    Returns:
+        清理后的文本
+    """
+    return ANSI_ESCAPE_PATTERN.sub('', text)
 
 
 class ManualBorderRenderer:
@@ -367,7 +392,17 @@ class ClientUI:
             force_update: 是否强制更新（保留参数兼容性，当前不使用）
         """
         if self.is_live:
-            self._full_content += content
+            # 调试日志：记录接收到的content（写入日志文件）
+            logger.debug(f"接收到content: 长度={len(content)}字符, 字节={len(content.encode('utf-8'))}bytes")
+            logger.debug(f"content前100字符: {repr(content[:100])}")
+
+            # 清理ANSI转义码后再添加（防止LLM生成的颜色码显示为乱码）
+            cleaned = clean_ansi_codes(content)
+
+            logger.debug(f"清理ANSI后长度: {len(cleaned)}字符")
+            logger.debug(f"当前_full_content长度: {len(self._full_content)} → {len(self._full_content) + len(cleaned)}")
+
+            self._full_content += cleaned
 
     async def _render_loop(self):
         """消费者：弹性渲染循环（手动增量渲染）
@@ -497,6 +532,9 @@ class ClientUI:
                 style = "green"
             else:
                 style = "yellow"
+
+        # 清理ANSI转义码（防止LLM生成的颜色码显示为乱码）
+        content = clean_ansi_codes(content)
 
         # 如果内容包含 Markdown 语法，尝试渲染 Markdown
         renderable = content

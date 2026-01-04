@@ -62,6 +62,10 @@ class FileDownloadTool(Tool):
         if not os.path.exists(file_path):
             return False, f"文件不存在: {file_path}"
 
+        # 2.5 路径必须是文件，不能是目录
+        if os.path.isdir(file_path):
+            return False, f"路径是目录，不是文件: {file_path}"
+
         # 3. 路径规范化
         normalized = os.path.normpath(file_path)
         if normalized != file_path:

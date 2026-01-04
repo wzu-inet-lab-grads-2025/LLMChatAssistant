@@ -154,8 +154,11 @@ class ClientMain:
         command = parts[0].lower()
         args = parts[1:] if len(parts) > 1 else []
 
+        self.logger.info(f"执行命令: {command} 参数: {args}")
+
         # /help - 显示帮助
         if command == "/help":
+            self.logger.debug("显示帮助信息")
             self.ui.print_help()
             return True
 
@@ -207,6 +210,7 @@ class ClientMain:
 
         # 未知命令
         else:
+            self.logger.warning(f"未知命令: {command}")
             self.ui.print_warning(f"未知命令: {command}，输入 /help 查看帮助")
             return True
 

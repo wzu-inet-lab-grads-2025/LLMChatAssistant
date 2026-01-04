@@ -66,7 +66,8 @@ class FileAccessConfig:
         "./workspace",
         "./storage/uploads",
         "/var/log/*.log",
-        "/tmp/*.txt"
+        "/tmp/*.txt",
+        "/tmp/pytest-of-*/*"  # pytest临时目录
     ])
 
     # 禁止访问的路径模式

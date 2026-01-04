@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Callable, Optional
 import json
 from shared.protocols.nplt import MessageType, NPLTMessage
-from shared.utils.logger import get_client_logger
+from shared.utils.logger import get_client_logger, get_network_logger
 from .ui import ClientUI
 
 
@@ -55,7 +55,8 @@ class NPLTClient:
         if self.ui is None:
             self.ui = ClientUI()
         self.response_event = asyncio.Event()
-        self.logger = get_client_logger()
+        # 使用 network logger 记录网络通信事件
+        self.logger = get_network_logger()
 
     async def connect(self) -> bool:
         """连接到服务器
@@ -139,12 +140,35 @@ class NPLTClient:
             self.writer.write(encoded)
             await self.writer.drain()
 
+            # 记录发送信息（DEBUG级别）- 包含消息内容摘要
+            content_summary = ""
+            if message_type == MessageType.CHAT_TEXT and len(data) > 0:
+                # 对于聊天文本，记录前100字符
+                text = data.decode('utf-8', errors='ignore')
+                if text != "HEARTBEAT":  # 心跳不记录内容
+                    content_summary = f", 内容={text[:100]}..."
+            elif message_type == MessageType.FILE_METADATA:
+                # 对于文件元数据，记录解析的信息
+                try:
+                    import json
+                    metadata = json.loads(data.decode('utf-8'))
+                    content_summary = f", 文件={metadata.get('filename', 'unknown')}, 大小={metadata.get('size', 0)} 字节"
+                except:
+                    content_summary = ", 元数据解析失败"
+            elif message_type == MessageType.FILE_DATA:
+                # 对于文件数据，只记录数据块大小
+                content_summary = f", 数据块={len(data)} 字节"
+
+            self.logger.debug(f"发送消息: 类型={message_type.name}, 序列号={self.send_seq}, "
+                            f"数据长度={len(data)} 字节{content_summary}")
+
             # 更新序列号
             self.send_seq = (self.send_seq + 1) % 65536
 
             return True
 
         except Exception as e:
+            self.logger.error(f"发送消息失败: {e}")
             self.ui.print_error(f"发送消息失败: {e}")
             self.connected = False
             return False
@@ -186,8 +210,30 @@ class NPLTClient:
 
             # 验证消息
             if not message.validate():
+                self.logger.warning(f"收到无效消息: 序列号={seq}, 数据长度={length}")
                 self.ui.print_warning(f"收到无效消息")
                 return None
+
+            # 记录接收信息（DEBUG级别）- 包含消息内容摘要
+            content_summary = ""
+            if message.type == MessageType.CHAT_TEXT and len(message.data) > 0:
+                # 对于聊天文本，记录前100字符
+                text = message.data.decode('utf-8', errors='ignore')
+                content_summary = f", 内容={text[:100]}..."
+            elif message.type == MessageType.FILE_METADATA:
+                # 对于文件元数据，记录解析的信息
+                try:
+                    import json
+                    metadata = json.loads(message.data.decode('utf-8'))
+                    content_summary = f", 文件={metadata.get('filename', 'unknown')}, 大小={metadata.get('size', 0)} 字节"
+                except:
+                    content_summary = ", 元数据解析失败"
+            elif message.type == MessageType.FILE_DATA:
+                # 对于文件数据，只记录数据块大小
+                content_summary = f", 数据块={len(message.data)} 字节"
+
+            self.logger.debug(f"接收消息: 类型={message.type.name}, 序列号={seq}, "
+                            f"数据长度={len(message.data)} 字节{content_summary}")
 
             # 更新接收序列号
             self.recv_seq = (message.seq + 1) % 65536
@@ -195,7 +241,8 @@ class NPLTClient:
             return message
 
         except asyncio.TimeoutError:
-            # 超时，检查是否应该发送心跳
+            # 超时，发送心跳
+            self.logger.debug("接收超时，发送心跳")
             await self.send_heartbeat()
             return None
 
@@ -206,12 +253,14 @@ class NPLTClient:
                 # 连接关闭，不显示错误信息（正常情况）
                 self.logger.debug(f"连接已关闭: {e}")
             else:
+                self.logger.error(f"接收消息失败: {e}")
                 self.ui.print_error(f"接收消息失败: {e}")
             self.connected = False
             return None
 
     async def send_heartbeat(self):
         """发送心跳"""
+        self.logger.debug("发送心跳")
         await self.send_message(
             MessageType.CHAT_TEXT,
             b"HEARTBEAT"
@@ -246,6 +295,7 @@ class NPLTClient:
 
                 # 收到服务器心跳，必须回复
                 if text == "HEARTBEAT":
+                    self.logger.debug("收到服务器心跳")
                     await self.send_heartbeat()  # 修复：回复心跳给服务器
                     return
 
@@ -254,16 +304,18 @@ class NPLTClient:
                     if self.is_streaming:
                         await self.ui.stop_live_display()  # 渐进显示剩余内容
                         self.is_streaming = False
-                        self.logger.debug("流式输出结束")
+                        self.logger.info("流式输出结束")
                         # 通知主程序响应完成
                         self.response_event.set()
                     return
 
                 # 如果正在流式输出，追加内容
                 if self.is_streaming:
+                    self.logger.debug(f"流式数据块: {len(text)} 字符")
                     self.ui.stream_content(text)
                 else:
                     # 非流式模式，直接显示完整消息
+                    self.logger.debug(f"接收聊天消息: {len(text)} 字符")
                     self.ui.print_message("assistant", text)
                     # 通知主程序响应完成
                     self.response_event.set()
@@ -291,7 +343,7 @@ class NPLTClient:
                             await asyncio.sleep(0.1)  # 等待 spinner 清除
                             self.ui.start_live_display()
                             self.is_streaming = True
-                            self.logger.debug("开始流式输出")
+                            self.logger.info("开始流式输出")
 
                     elif status_type in ["thinking", "tool_call", "generating"]:
                         # 更新 spinner 状态

@@ -38,7 +38,26 @@ class CommandTool(Tool):
     """命令执行工具"""
 
     name: str = "command_executor"
-    description: str = "执行安全的系统命令（仅白名单命令和路径白名单）"
+    description: str = """执行安全的系统命令（白名单命令）
+
+可用命令：
+- cat <文件>: 查看文件内容（如：cat config.yaml）
+- head <文件>: 查看文件前几行（如：head -20 config.yaml）
+- tail <文件>: 查看文件后几行（如：tail -20 config.yaml）
+- grep <模式> <文件>: 在文件中搜索文本（如：grep "port" config.yaml）
+- ls [目录]: 列出目录内容（如：ls storage/uploads/）
+- ps: 查看进程列表
+- pwd: 显示当前工作目录
+- whoami: 显示当前用户
+- df: 查看磁盘使用情况
+- free: 查看内存使用情况
+
+适用场景：
+- 用户想"查看"、"读取"、"显示"文件内容 → 使用 cat/head/tail
+- 用户想"搜索"、"查找"文件中的文本 → 使用 grep
+- 用户想"列出"、"浏览"目录 → 使用 ls
+
+注意：命令必须在白名单中，路径必须通过白名单验证"""
     timeout: int = 5
     path_validator: Optional[object] = field(default=None)
     max_output_size: int = 102400  # 100KB
@@ -67,15 +86,65 @@ class CommandTool(Tool):
         # 3. 路径白名单验证（针对需要路径验证的命令）
         if command in PATH_VALIDATION_COMMANDS and self.path_validator:
             if args:
-                for arg in args:
-                    # 跳过选项参数（以 - 开头）
-                    if arg.startswith('-'):
-                        continue
+                # grep命令特殊处理：grep [options] pattern file
+                # 只有最后一个参数（文件）需要路径验证，pattern不需要
+                if command == 'grep':
+                    # 找到非选项参数（不以-开头）
+                    non_option_args = [arg for arg in args if not arg.startswith('-')]
 
-                    # 验证路径
-                    allowed, msg = self.path_validator.is_allowed(arg)
-                    if not allowed:
-                        return False, msg
+                    # grep至少需要2个参数：pattern和file
+                    if len(non_option_args) >= 2:
+                        # 只验证最后一个参数（文件路径）
+                        file_path = non_option_args[-1]
+                        allowed, msg = self.path_validator.is_allowed(file_path)
+                        if not allowed:
+                            return False, msg
+                    elif len(non_option_args) == 1:
+                        # 只有1个参数，可能是从stdin读取，需要验证
+                        file_path = non_option_args[0]
+                        # 检查是否是实际存在的文件
+                        import os
+                        if os.path.exists(file_path):
+                            allowed, msg = self.path_validator.is_allowed(file_path)
+                            if not allowed:
+                                return False, msg
+                else:
+                    # 其他命令（cat, head, tail, ls）：分别处理
+                    if command in ['head', 'tail']:
+                        # head/tail命令特殊处理：[-n num] file
+                        # -n的参数是数字，不是路径
+                        for i, arg in enumerate(args):
+                            # 跳过选项参数
+                            if arg.startswith('-'):
+                                # 如果是-n，下一个参数是数字，跳过
+                                if arg == '-n' and i + 1 < len(args):
+                                    continue
+                                continue
+
+                            # 最后一个参数通常是文件路径
+                            if i == len(args) - 1:
+                                allowed, msg = self.path_validator.is_allowed(arg)
+                                if not allowed:
+                                    return False, msg
+                            # 其他参数（如数字）不需要验证
+
+                    elif command == 'ls':
+                        # ls：所有非选项参数都验证
+                        for arg in args:
+                            if arg.startswith('-'):
+                                continue
+                            allowed, msg = self.path_validator.is_allowed(arg)
+                            if not allowed:
+                                return False, msg
+
+                    elif command == 'cat':
+                        # cat：所有非选项参数都验证
+                        for arg in args:
+                            if arg.startswith('-'):
+                                continue
+                            allowed, msg = self.path_validator.is_allowed(arg)
+                            if not allowed:
+                                return False, msg
 
         return True, ""
 

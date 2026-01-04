@@ -114,6 +114,12 @@ class Session:
         Args:
             chunk: 文本片段
         """
+        # 调试日志：记录发送的chunk
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[DEBUG] NPLT发送CHAT_TEXT: chunk长度={len(chunk)}字符, 字节={len(chunk.encode('utf-8'))}bytes")
+        logger.info(f"[DEBUG] NPLT发送CHAT_TEXT前100字符: {repr(chunk[:100])}")
+
         await self.send_message(MessageType.CHAT_TEXT, chunk.encode('utf-8'))
 
     async def send_stream_end(self):
@@ -211,6 +217,9 @@ class NPLTServer:
 
     # 会话管理器（多会话管理）
     session_manager: Optional[SessionManager] = None
+
+    # 索引管理器（用于文件自动索引）
+    index_manager: Optional[object] = None
 
     def register_chat_handler(self, handler: Callable):
         """注册聊天消息处理器
@@ -578,6 +587,24 @@ class NPLTServer:
                         print(f"[INFO] [SERVER] 文件元数据已持久化到 conversation_history: {session.session_id}")
 
                     print(f"[INFO] [SERVER] 文件元数据已注册到 session: {session.session_id}")
+
+                    # 自动索引文件（如果 index_manager 可用）
+                    if self.index_manager:
+                        try:
+                            print(f"[INFO] [SERVER] 开始索引文件: {uploaded_file.storage_path}")
+                            success, msg = await self.index_manager.ensure_indexed(
+                                file_path=uploaded_file.storage_path
+                            )
+                            if success:
+                                # 更新 indexed 状态
+                                file_info["indexed"] = True
+                                print(f"[INFO] [SERVER] 文件索引成功: {filename}")
+                            else:
+                                print(f"[WARN] [SERVER] 文件索引失败: {msg}")
+                        except Exception as e:
+                            print(f"[ERROR] [SERVER] 索引文件失败: {e}")
+                    else:
+                        print(f"[WARN] [SERVER] index_manager 未初始化，文件未被索引")
 
                     # 发送成功确认
                     await session.send_message(

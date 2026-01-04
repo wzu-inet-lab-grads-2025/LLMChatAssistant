@@ -73,22 +73,33 @@ class PathValidator:
         """
         # 处理 glob 模式
         if '*' in pattern or '?' in pattern or '[' in pattern:
-            # 获取目录部分
+            # 分离目录和文件名模式
             pattern_dir = os.path.dirname(pattern)
-            if not pattern_dir:
-                pattern_dir = '.'
+            pattern_basename = os.path.basename(pattern)
 
-            pattern_dir_real = os.path.realpath(pattern_dir)
             path_dir = os.path.dirname(path)
+            filename = os.path.basename(path)
 
-            # 检查目录是否匹配
-            if path_dir.startswith(pattern_dir_real):
-                # 检查文件名是否匹配 glob 模式
-                filename = os.path.basename(path)
-                pattern_basename = os.path.basename(pattern)
+            # 如果模式中也有通配符目录，需要特殊处理
+            if '*' in pattern_dir or '?' in pattern_dir or '[' in pattern_dir:
+                # 使用fnmatch匹配完整路径
+                return fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(path, pattern + os.sep)
 
-                if fnmatch.fnmatch(filename, pattern_basename):
-                    return True
+            # 目录部分没有通配符
+            if pattern_dir and pattern_dir != '.':
+                # 检查目录是否匹配
+                pattern_dir_real = os.path.realpath(pattern_dir)
+                if not path_dir.startswith(pattern_dir_real):
+                    return False
+
+            # 检查文件名是否匹配 glob 模式
+            if fnmatch.fnmatch(filename, pattern_basename):
+                return True
+
+            # 如果文件名模式是*，也匹配子目录
+            if pattern_basename == '*':
+                return True
+
             return False
 
         # 处理普通路径

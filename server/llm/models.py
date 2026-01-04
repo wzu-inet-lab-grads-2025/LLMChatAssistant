@@ -20,13 +20,13 @@ EMBED_MODEL = "embedding-3-pro"
 MODEL_CONFIGS = {
     "glm-4-flash": {
         "temperature": 0.7,
-        "max_tokens": 2000,
-        "timeout": 30,
+        "max_tokens": 128000,  # 支持长上下文（128K tokens）
+        "timeout": 300,  # 增加超时时间以支持长文本生成
     },
     "glm-4.5-flash": {
         "temperature": 0.7,
-        "max_tokens": 2000,
-        "timeout": 30,
+        "max_tokens": 128000,  # 支持长上下文（128K tokens）
+        "timeout": 300,  # 增加超时时间以支持长文本生成
     },
 }
 

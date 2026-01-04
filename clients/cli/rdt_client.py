@@ -7,12 +7,14 @@ RDT 客户端模块
 
 import asyncio
 import hashlib
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Set
 
 from shared.protocols.rdt import ACKPacket, RDTPacket
+from shared.utils.logger import get_rdt_logger
 
 
 class RDTClientState(Enum):
@@ -129,6 +131,9 @@ class RDTClient:
     running: bool = False
     server_addr: Optional[tuple] = None
 
+    # 日志记录器
+    logger: logging.Logger = field(default_factory=get_rdt_logger)
+
     async def start(self):
         """启动 RDT 客户端"""
         loop = asyncio.get_event_loop()
@@ -144,7 +149,7 @@ class RDTClient:
 
         # 获取分配的端口
         local_port = self.transport.get_extra_info('sockname')[1]
-        print(f"[INFO] [RDT] RDT 客户端启动在 0.0.0.0:{local_port}")
+        self.logger.info(f"RDT 客户端启动在 0.0.0.0:{local_port}")
 
     async def stop(self):
         """停止 RDT 客户端"""
@@ -157,7 +162,7 @@ class RDTClient:
         if self.transport:
             self.transport.close()
 
-        print("[INFO] [RDT] RDT 客户端已停止")
+        self.logger.info("RDT 客户端已停止")
 
     def create_session(
         self,
@@ -192,7 +197,7 @@ class RDTClient:
         total_packets = (file_size + RDTPacket.MAX_DATA_LENGTH - 1) // RDTPacket.MAX_DATA_LENGTH
         session.total_packets = total_packets
 
-        print(f"[INFO] [RDT] 创建接收会话: {filename} ({file_size} 字节, {total_packets} 个包)")
+        self.logger.info(f"创建接收会话: {filename} ({file_size} 字节, {total_packets} 个包)")
 
         return session
 
@@ -208,7 +213,7 @@ class RDTClient:
         """
         session = self.sessions.get(download_token)
         if not session:
-            print(f"[ERROR] [RDT] 会话不存在: {download_token}")
+            self.logger.error(f"会话不存在: {download_token}")
             return None
 
         session.state = RDTClientState.RECEIVING
@@ -221,7 +226,7 @@ class RDTClient:
                 # 检查超时
                 elapsed = asyncio.get_event_loop().time() - start_time
                 if elapsed > timeout:
-                    print(f"[ERROR] [RDT] 接收超时")
+                    self.logger.error(f"接收超时 (token={download_token})")
                     session.state = RDTClientState.FAILED
                     return None
 
@@ -229,7 +234,7 @@ class RDTClient:
 
             # 验证校验和
             if not session.verify_checksum():
-                print(f"[ERROR] [RDT] 校验和不匹配")
+                self.logger.error(f"校验和不匹配 (token={download_token})")
                 session.state = RDTClientState.FAILED
                 return None
 
@@ -237,14 +242,14 @@ class RDTClient:
             file_data = session.assemble_file()
             session.state = RDTClientState.COMPLETED
 
-            print(f"[INFO] [RDT] 文件接收完成: {session.filename}")
-            print(f"[INFO] [RDT] 接收统计: {session.received_count}/{session.total_packets} 包, "
-                  f"重复: {session.duplicate_count}")
+            self.logger.info(f"文件接收完成: {session.filename}")
+            self.logger.info(f"接收统计: {session.received_count}/{session.total_packets} 包, "
+                            f"重复: {session.duplicate_count}")
 
             return file_data
 
         except Exception as e:
-            print(f"[ERROR] [RDT] 接收文件失败: {e}")
+            self.logger.error(f"接收文件失败: {e}")
             session.state = RDTClientState.FAILED
             return None
 
@@ -261,7 +266,7 @@ class RDTClient:
 
             # 验证数据包
             if not packet.validate():
-                print(f"[WARN] [RDT] 无效数据包 (seq={packet.seq})")
+                self.logger.warning(f"收到无效数据包 (seq={packet.seq})")
                 return
 
             # 查找会话（使用第一个活跃会话）
@@ -272,7 +277,7 @@ class RDTClient:
                     break
 
             if not session:
-                print(f"[WARN] [RDT] 无活跃会话")
+                self.logger.warning("无活跃会话")
                 return
 
             # 添加数据包
@@ -283,11 +288,11 @@ class RDTClient:
             self._send_ack(expected_seq, addr)
 
             if is_new:
-                print(f"[DEBUG] [RDT] 收到包 {packet.seq}/{session.total_packets}, "
-                      f"发送 ACK={expected_seq}")
+                self.logger.debug(f"收到包 {packet.seq}/{session.total_packets}, "
+                                 f"发送 ACK={expected_seq}")
 
         except Exception as e:
-            print(f"[ERROR] [RDT] 处理数据包失败: {e}")
+            self.logger.error(f"处理数据包失败: {e}")
 
     def _send_ack(self, seq: int, addr: tuple):
         """发送 ACK 包
@@ -312,6 +317,7 @@ class RDTClientProtocol(asyncio.DatagramProtocol):
 
     def __init__(self, client: RDTClient):
         self.client = client
+        self.logger = client.logger  # 共享同一个 logger
 
     def connection_made(self, transport):
         """连接建立"""
@@ -325,8 +331,8 @@ class RDTClientProtocol(asyncio.DatagramProtocol):
             self.client.handle_packet(data, addr)
         else:
             # ACK 包（不应该收到）
-            print(f"[WARN] [RDT] 收到 ACK 包（客户端仅接收）")
+            self.logger.warning("收到 ACK 包（客户端仅接收）")
 
     def error_received(self, exc):
         """接收错误"""
-        print(f"[ERROR] [RDT] 接收错误: {exc}")
+        self.logger.error(f"接收错误: {exc}")

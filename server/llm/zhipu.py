@@ -6,6 +6,8 @@
 """
 
 import os
+import logging
+import time
 from typing import List, AsyncIterator
 from zai import ZaiClient
 from .base import LLMProvider, Message
@@ -15,6 +17,20 @@ from .models import (
     EMBED_MODEL,
     MODEL_CONFIGS
 )
+from shared.utils.logger import (
+    get_llm_logger,
+    log_llm_request,
+    log_llm_response,
+    log_llm_stream_start,
+    log_llm_stream_chunk,
+    log_llm_stream_end,
+    log_llm_error,
+    log_embedding_request,
+    log_embedding_response
+)
+
+logger = logging.getLogger(__name__)
+llm_logger = get_llm_logger()
 
 
 class ZhipuProvider(LLMProvider):
@@ -75,6 +91,11 @@ class ZhipuProvider(LLMProvider):
         # 转换消息格式
         api_messages = [msg.to_dict() for msg in messages]
 
+        # 记录请求
+        log_llm_request(llm_logger, model, messages, temperature=temperature, max_tokens=max_tokens)
+
+        start_time = time.time()
+
         try:
             # 使用非流式输出（简化调用）
             response = self.client.chat.completions.create(
@@ -84,9 +105,29 @@ class ZhipuProvider(LLMProvider):
                 max_tokens=max_tokens,
                 stream=False
             )
-            return response.choices[0].message.content
+
+            content = response.choices[0].message.content
+
+            # 计算耗时
+            duration_ms = (time.time() - start_time) * 1000
+
+            # 记录响应
+            log_llm_response(llm_logger, model, content, duration_ms)
+
+            return content
 
         except Exception as e:
+            # 记录错误
+            log_llm_error(
+                llm_logger,
+                e,
+                context={
+                    'model': model,
+                    'temperature': temperature,
+                    'max_tokens': max_tokens,
+                    'message_count': len(messages)
+                }
+            )
             raise Exception(f"智谱 API 调用失败：{str(e)}")
 
     async def chat_stream(
@@ -117,6 +158,12 @@ class ZhipuProvider(LLMProvider):
         # 转换消息格式
         api_messages = [msg.to_dict() for msg in messages]
 
+        # 记录请求
+        log_llm_request(llm_logger, model, messages, temperature=temperature, max_tokens=max_tokens)
+
+        start_time = time.time()
+        total_chars = 0
+
         try:
             # 流式输出
             response = self.client.chat.completions.create(
@@ -127,13 +174,46 @@ class ZhipuProvider(LLMProvider):
                 stream=True
             )
 
+            # 记录流式开始
+            log_llm_stream_start(llm_logger, model)
+
             # 流式响应是同步迭代器
+            finish_reason = None
             for chunk in response:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    # 在异步生成器中 yield
-                    yield chunk.choices[0].delta.content
+                if chunk.choices:
+                    choice = chunk.choices[0]
+                    # 检查finish_reason
+                    if choice.finish_reason:
+                        finish_reason = choice.finish_reason
+
+                    if choice.delta.content:
+                        content = choice.delta.content
+                        total_chars += len(content)
+
+                        # 记录数据块（DEBUG级别，可能导致日志过多）
+                        log_llm_stream_chunk(llm_logger, len(content), total_chars)
+
+                        # 在异步生成器中 yield
+                        yield content
+
+            # 计算总耗时
+            duration_ms = (time.time() - start_time) * 1000
+
+            # 记录流式结束
+            log_llm_stream_end(llm_logger, model, total_chars, duration_ms, finish_reason or "unknown")
 
         except Exception as e:
+            # 记录错误
+            log_llm_error(
+                llm_logger,
+                e,
+                context={
+                    'model': model,
+                    'temperature': temperature,
+                    'max_tokens': max_tokens,
+                    'message_count': len(messages)
+                }
+            )
             raise Exception(f"智谱 API 调用失败：{str(e)}")
 
     async def embed(self, texts: List[str], model: str = None) -> List[List[float]]:
@@ -152,6 +232,11 @@ class ZhipuProvider(LLMProvider):
         """
         model = model or EMBED_MODEL
 
+        # 记录请求
+        log_embedding_request(llm_logger, model, texts)
+
+        start_time = time.time()
+
         try:
             # embeddings.create 不需要 await（同步调用）
             response = self.client.embeddings.create(
@@ -161,9 +246,26 @@ class ZhipuProvider(LLMProvider):
 
             # 提取向量
             embeddings = [item.embedding for item in response.data]
+
+            # 计算耗时和维度
+            duration_ms = (time.time() - start_time) * 1000
+            embedding_dim = len(embeddings[0]) if embeddings else 0
+
+            # 记录响应
+            log_embedding_response(llm_logger, embedding_dim, duration_ms)
+
             return embeddings
 
         except Exception as e:
+            # 记录错误
+            log_llm_error(
+                llm_logger,
+                e,
+                context={
+                    'model': model,
+                    'text_count': len(texts)
+                }
+            )
             raise Exception(f"智谱 Embedding API 调用失败：{str(e)}")
 
     def validate_api_key(self) -> bool:
@@ -198,7 +300,14 @@ class ZhipuProvider(LLMProvider):
                 f"不支持的模型：{model}，"
                 f"可用模型：{AVAILABLE_MODELS}"
             )
+
+        old_model = self.current_model
         self.current_model = model
+
+        # 记录模型切换
+        llm_logger.info(f"模型切换")
+        llm_logger.info(f"  从: {old_model}")
+        llm_logger.info(f"  到: {model}")
 
     def get_available_models(self) -> List[str]:
         """
