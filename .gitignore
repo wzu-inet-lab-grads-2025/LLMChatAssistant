@@ -91,4 +91,8 @@ tests/
 *.md
 !docs/*.md
 !README.md
-!CLAUDE.md
+
+# OpenSpec and agent configuration
+openspec/
+AGENTS.md
+CLAUDE.md
