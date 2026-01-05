@@ -62,6 +62,7 @@ class Session:
     # }
 
     client_type: str = "cli"                     # 客户端类型：cli | web | desktop
+    client_udp_port: Optional[int] = None        # 客户端 RDT UDP 端口（用于文件下载）
 
     HEARTBEAT_TIMEOUT = 180  # 心跳超时时间（秒）- 修复：2倍心跳间隔，避免误杀
 
@@ -463,6 +464,10 @@ class NPLTServer:
             elif message.type == MessageType.SESSION_DELETE:
                 # 删除会话请求
                 await self._handle_session_delete(session, message)
+
+            elif message.type == MessageType.CLIENT_UDP_PORT:
+                # 客户端 UDP 端口注册
+                await self._handle_client_udp_port(session, message)
 
             else:
                 print(f"[WARN] [SERVER] 未知消息类型: {message.type}")
@@ -946,6 +951,30 @@ class NPLTServer:
                 f"删除会话失败: {str(e)}".encode('utf-8')
             )
 
+    async def _handle_client_udp_port(self, session: Session, message: NPLTMessage):
+        """处理客户端 UDP 端口注册
+
+        Args:
+            session: 客户端会话
+            message: NPLT 消息
+        """
+        try:
+            import json
+
+            # 解析 UDP 端口
+            port_data = json.loads(message.data.decode('utf-8'))
+            udp_port = port_data.get('udp_port')
+
+            if not udp_port:
+                print(f"[WARN] [SERVER] 客户端未提供 UDP 端口")
+                return
+
+            # 存储 UDP 端口到会话
+            session.client_udp_port = udp_port
+            print(f"[INFO] [SERVER] [{session.session_id[:8]}] 客户端 UDP 端口: {udp_port}")
+
+        except Exception as e:
+            print(f"[ERROR] [SERVER] 处理客户端 UDP 端口注册失败: {e}")
 
 # NPLTMessage.decode_header 是一个辅助方法，用于解码头部
 def _decode_header_helper():

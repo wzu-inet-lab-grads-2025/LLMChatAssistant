@@ -144,7 +144,8 @@ class ReActAgent:
                     yield chunk
                 return
 
-            tool_use = self._parse_tool_use(thought)
+            tool_use_list = self._parse_tool_use(thought)
+            tool_use = tool_use_list[0] if tool_use_list else None
 
             tool_calls = []
 
@@ -155,7 +156,7 @@ class ReActAgent:
                     user_message,
                     conversation_history,
                     session,
-                    tool_use,
+                    tool_use_list,  # 传递完整的工具列表
                     tool_calls
                 )
 
@@ -238,21 +239,26 @@ class ReActAgent:
         user_message: str,
         conversation_history: ConversationHistory,
         session,
-        initial_tool_use: dict,
+        initial_tool_use: dict | List[Dict[str, Any]],
         tool_calls: list
     ) -> tuple[str, list]:
-        """执行需要工具调用的ReAct循环
+        """执行需要工具调用的ReAct循环（支持批量工具）
 
         Args:
             user_message: 用户消息
             conversation_history: 对话历史
             session: Session对象
-            initial_tool_use: 初始工具调用信息
+            initial_tool_use: 初始工具调用信息或工具列表
             tool_calls: 工具调用列表
 
         Returns:
             (最终回复, 工具调用列表)
         """
+        # 如果 initial_tool_use 是列表，使用第一个工具作为起点，但记住剩余的工具
+        pending_tools = []
+        if isinstance(initial_tool_use, list):
+            pending_tools = initial_tool_use[1:]  # 剩余的工具
+            initial_tool_use = initial_tool_use[0] if initial_tool_use else None
         current_message = user_message
         round_count = 0
 
@@ -262,16 +268,24 @@ class ReActAgent:
 
             try:
                 if round_count > 1:
-                    # 重新思考是否需要更多工具
-                    await self._send_status("thinking", f"正在思考 (第 {round_count} 轮)")
+                    # 优先使用待处理的工具（从初始多工具列表中）
+                    if pending_tools:
+                        tool_use = pending_tools.pop(0)
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.info(f"[DEBUG] 执行待处理工具: {tool_use['name']}")
+                    else:
+                        # 重新思考是否需要更多工具
+                        await self._send_status("thinking", f"正在思考 (第 {round_count} 轮)")
 
-                    # 调试日志：记录第2轮及后续轮次的上下文
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.info(f"[DEBUG] 第{round_count}轮思考: current_message前200字符={repr(current_message[:200])}")
+                        # 调试日志：记录第2轮及后续轮次的上下文
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.info(f"[DEBUG] 第{round_count}轮思考: current_message前200字符={repr(current_message[:200])}")
 
-                    thought = await self._think_and_decide(current_message, conversation_history)
-                    tool_use = self._parse_tool_use(thought)
+                        thought = await self._think_and_decide(current_message, conversation_history)
+                        tool_use_list = self._parse_tool_use(thought)
+                        tool_use = tool_use_list[0] if tool_use_list else None
                 else:
                     tool_use = initial_tool_use
 
@@ -305,9 +319,12 @@ class ReActAgent:
 
                 tool = self.tools[tool_name]
 
-                # 注入 session 到工具（如果工具支持）
-                if hasattr(tool, 'session') and session is not None:
-                    tool.session = session
+                # 注入 session 到工具参数（关键集成点）
+                # FileDownloadTool 需要 session 对象来访问 client_addr（用于 RDT 传输）
+                # 通过检查 execute() 方法的参数名来判断工具是否支持 session
+                # 参考：server/tools/file_download.py:77-93
+                if session is not None and 'session' in tool.execute.__code__.co_varnames:
+                    tool_args['session'] = session
 
                 # 发送状态：正在调用工具
                 await self._send_status("tool_call", f"正在调用工具: {tool_name}")
@@ -422,7 +439,8 @@ class ReActAgent:
                     f.flush()
 
                 # 检查是否需要使用工具
-                tool_use = self._parse_tool_use(thought)
+                tool_use_list = self._parse_tool_use(thought)
+                tool_use = tool_use_list[0] if tool_use_list else None
 
                 if not tool_use:
                     # 不需要工具，返回最终回复（收集完整字符串）
@@ -454,9 +472,12 @@ class ReActAgent:
 
                 tool = self.tools[tool_name]
 
-                # 注入 session 到工具（如果工具支持）
-                if hasattr(tool, 'session') and session is not None:
-                    tool.session = session
+                # 注入 session 到工具参数（关键集成点）
+                # FileDownloadTool 需要 session 对象来访问 client_addr（用于 RDT 传输）
+                # 通过检查 execute() 方法的参数名来判断工具是否支持 session
+                # 参考：server/tools/file_download.py:77-93
+                if session is not None and 'session' in tool.execute.__code__.co_varnames:
+                    tool_args['session'] = session
 
                 # 发送状态：正在调用工具
                 await self._send_status("tool_call", f"正在调用工具: {tool_name}")
@@ -785,11 +806,12 @@ ARGS: {"file_path": "storage/uploads/da468689-4b29-434d-b618-c3f58d85f9a8/config
         # 构建消息列表
         messages = [Message(role="system", content=system_prompt)]
 
-        # 上下文处理策略：直接使用context，它已经是对话历史的合理子集
-        # context由ConversationHistory.get_context()返回，包含最近的消息轮次
-        # 不要修改或过滤context，直接添加到messages中
+        # 上下文处理策略：将 ChatMessage 转换为 Message
+        # 注意：ChatMessage 包含 tool_calls，但传递给 LLM 时需要过滤掉
+        # 智谱 API 不接受历史消息中的 tool_calls（只接受响应中的）
         for msg in context:
-            messages.append(msg)
+            # 只传递 role 和 content，不传递 tool_calls
+            messages.append(Message(role=msg.role, content=msg.content))
 
         # 添加当前用户消息
         messages.append(Message(role="user", content=message))
@@ -810,60 +832,69 @@ ARGS: {"file_path": "storage/uploads/da468689-4b29-434d-b618-c3f58d85f9a8/config
 
         return response
 
-    def _parse_tool_use(self, thought: str) -> Dict[str, Any] | None:
-        """解析思考结果，提取工具调用
+    def _parse_tool_use(self, thought: str) -> List[Dict[str, Any]]:
+        """解析思考结果，提取工具调用（支持多工具）
 
         Args:
             thought: 思考结果
 
         Returns:
-            工具调用信息或 None
+            工具调用信息列表（可能为空）
         """
         import logging
         logger = logging.getLogger(__name__)
 
-        # 格式1: 匹配标准格式 TOOL: tool_name
-        tool_match = re.search(r'TOOL:\s*(\w+)', thought, re.IGNORECASE)
-        args_match = re.search(r'ARGS:\s*(\{.*?\})', thought, re.DOTALL | re.IGNORECASE)
+        tools = []
 
-        if tool_match:
-            tool_name = tool_match.group(1)
-            if args_match:
+        # 格式1: 匹配标准格式 TOOL: tool_name（支持多个）
+        tool_matches = re.finditer(r'TOOL:\s*(\w+)', thought, re.IGNORECASE)
+        args_matches = re.finditer(r'ARGS:\s*(\{.*?\})', thought, re.DOTALL | re.IGNORECASE)
+
+        # 将所有匹配转换为列表
+        tool_names = [m.group(1) for m in tool_matches]
+        args_list = [m.group(1) for m in args_matches]
+
+        # 配对工具名和参数
+        for i, tool_name in enumerate(tool_names):
+            if i < len(args_list):
                 try:
-                    args = json.loads(args_match.group(1))
+                    args = json.loads(args_list[i])
                     logger.info(f"[DEBUG] 解析工具调用(标准格式): {tool_name} {args}")
-                    return {"name": tool_name, "args": args}
+                    tools.append({"name": tool_name, "args": args})
                 except json.JSONDecodeError:
                     logger.warning(f"[DEBUG] JSON解析失败，使用空参数")
-                    return {"name": tool_name, "args": {}}
+                    tools.append({"name": tool_name, "args": {}})
             else:
                 logger.info(f"[DEBUG] 解析工具调用(标准格式，无参数): {tool_name}")
-                return {"name": tool_name, "args": {}}
+                tools.append({"name": tool_name, "args": {}})
 
         # 格式2: 匹配简化格式 (tool_name\n{args}) - LLM有时会返回这种格式
-        lines = thought.strip().split('\n')
-        if len(lines) >= 1:
-            first_line = lines[0].strip()
-            # 检查是否是有效的工具名称
-            valid_tools = ["semantic_search", "command_executor", "sys_monitor", "file_upload", "file_download"]
-            if first_line in valid_tools:
-                tool_name = first_line
-                args = {}
-                # 尝试从第二行解析JSON参数
-                if len(lines) >= 2:
-                    try:
-                        args = json.loads(lines[1].strip())
-                        logger.info(f"[DEBUG] 解析工具调用(简化格式): {tool_name} {args}")
-                        return {"name": tool_name, "args": args}
-                    except json.JSONDecodeError:
-                        logger.warning(f"[DEBUG] 简化格式JSON解析失败")
-                        return {"name": tool_name, "args": {}}
-                else:
-                    logger.info(f"[DEBUG] 解析工具调用(简化格式，无参数): {tool_name}")
-                    return {"name": tool_name, "args": {}}
+        if not tools:
+            lines = thought.strip().split('\n')
+            if len(lines) >= 1:
+                first_line = lines[0].strip()
+                # 检查是否是有效的工具名称
+                valid_tools = ["semantic_search", "command_executor", "sys_monitor", "file_upload", "file_download"]
+                if first_line in valid_tools:
+                    tool_name = first_line
+                    args = {}
+                    # 尝试从第二行解析JSON参数
+                    if len(lines) >= 2:
+                        try:
+                            args = json.loads(lines[1].strip())
+                            logger.info(f"[DEBUG] 解析工具调用(简化格式): {tool_name} {args}")
+                            tools.append({"name": tool_name, "args": args})
+                        except json.JSONDecodeError:
+                            logger.warning(f"[DEBUG] 简化格式JSON解析失败")
+                            tools.append({"name": tool_name, "args": {}})
+                    else:
+                        logger.info(f"[DEBUG] 解析工具调用(简化格式，无参数): {tool_name}")
+                        tools.append({"name": tool_name, "args": {}})
 
-        logger.warning(f"[DEBUG] 无法解析工具调用: {repr(thought[:100])}")
-        return None
+        if not tools:
+            logger.warning(f"[DEBUG] 无法解析工具调用: {repr(thought[:100])}")
+
+        return tools
 
     async def _generate_final_response_stream(
         self,
@@ -887,7 +918,9 @@ ARGS: {"file_path": "storage/uploads/da468689-4b29-434d-b618-c3f58d85f9a8/config
         logger.info(f"[DEBUG] _generate_final_response_stream被调用, tool_calls数量: {len(tool_calls)}")
         for i, call in enumerate(tool_calls):
             logger.info(f"[DEBUG] tool_call[{i}]: tool_name={call.tool_name}, status={call.status}")
-            logger.info(f"[DEBUG] tool_call[{i}] arguments: {call.arguments}")
+            # 过滤 session 对象避免序列化错误
+            safe_args = {k: v for k, v in call.arguments.items() if k != 'session'}
+            logger.info(f"[DEBUG] tool_call[{i}] arguments: {safe_args}")
 
         # 特殊处理1: semantic_search成功后，自动调用command_executor读取完整文件内容
         if (len(tool_calls) == 1 and

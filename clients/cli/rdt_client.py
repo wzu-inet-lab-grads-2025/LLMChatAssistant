@@ -130,9 +130,18 @@ class RDTClient:
     protocol: Optional[asyncio.DatagramProtocol] = None
     running: bool = False
     server_addr: Optional[tuple] = None
+    local_port: int = 0  # 本地 UDP 端口
 
     # 日志记录器
     logger: logging.Logger = field(default_factory=get_rdt_logger)
+
+    def get_local_port(self) -> int:
+        """获取本地 UDP 端口
+
+        Returns:
+            本地 UDP 端口号
+        """
+        return self.local_port
 
     async def start(self):
         """启动 RDT 客户端"""
@@ -148,8 +157,8 @@ class RDTClient:
         self.server_addr = (self.server_host, self.server_port)
 
         # 获取分配的端口
-        local_port = self.transport.get_extra_info('sockname')[1]
-        self.logger.info(f"RDT 客户端启动在 0.0.0.0:{local_port}")
+        self.local_port = self.transport.get_extra_info('sockname')[1]
+        self.logger.info(f"RDT 客户端启动在 0.0.0.0:{self.local_port}")
 
     async def stop(self):
         """停止 RDT 客户端"""

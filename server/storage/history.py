@@ -37,9 +37,12 @@ class ToolCall:
             print(f"[WARN] ToolCall.to_dict: timestamp 类型异常 {type(self.timestamp)}, 使用当前时间")
             timestamp_str = datetime.now().isoformat()
 
+        # 过滤掉不可序列化的参数（如 session 对象）
+        serializable_args = {k: v for k, v in self.arguments.items() if k != 'session'}
+
         return {
             "tool_name": self.tool_name,
-            "arguments": self.arguments,
+            "arguments": serializable_args,
             "result": self.result,
             "status": self.status,
             "duration": self.duration,

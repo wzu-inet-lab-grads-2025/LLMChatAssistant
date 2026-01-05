@@ -86,3 +86,9 @@ issues/*.md
 .roo/
 
 tests/
+
+# Root-level AI generated reports and documents (keep docs/)
+*.md
+!docs/*.md
+!README.md
+!CLAUDE.md

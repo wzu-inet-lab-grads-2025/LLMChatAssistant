@@ -106,7 +106,31 @@ class Server:
                 config=self.config.file_access
             )
 
-            # 创建工具实例
+            # 创建 RDT 服务器（必须在 Agent 之前创建）
+            # 关键依赖：FileDownloadTool 需要有效的 rdt_server 实例
+            # 如果在 Agent 之后创建，rdt_server 会是 None，导致文件下载降级到 NPLT 模式
+            # 参考：server/tools/file_download.py:246-250
+            self.rdt_server = RDTServer(
+                host="0.0.0.0",
+                port=9998,
+                window_size=5,
+                timeout=0.1
+            )
+
+            # 创建 NPLT 服务器
+            self.nplt_server = NPLTServer(
+                host=self.config.server.host,
+                port=self.config.server.port,
+                max_clients=self.config.server.max_clients,
+                heartbeat_interval=self.config.server.heartbeat_interval
+            )
+
+            # 创建工具实例（RDT 服务器现在可用）
+            # FileDownloadTool 的关键集成：
+            # - rdt_server: 用于 UDP 文件传输（必须已初始化）
+            # - server: 用于调用 offer_file_download() 发送 DOWNLOAD_OFFER 消息
+            # - client_type: 决定传输模式（cli→RDT, web→HTTP）
+            # 参考：server/tools/file_download.py, server/main.py:305-363
             self.agent = ReActAgent(
                 llm_provider=self.llm_provider,
                 tools={
@@ -125,7 +149,8 @@ class Server:
                     "file_upload": FileUploadTool(),
                     "file_download": FileDownloadTool(
                         path_validator=path_validator,
-                        rdt_server=self.rdt_server,
+                        rdt_server=self.rdt_server,  # 现在不是 None 了
+                        server=self,  # 传入 server 实例，用于调用 offer_file_download
                         http_base_url=f"http://{self.config.server.host}:{self.config.server.port}",
                         client_type="cli"
                     )
@@ -146,22 +171,6 @@ class Server:
                 self.session_manager.create_session(name="默认会话")
 
             self.logger.info("会话管理器初始化成功")
-
-            # 创建 NPLT 服务器
-            self.nplt_server = NPLTServer(
-                host=self.config.server.host,
-                port=self.config.server.port,
-                max_clients=self.config.server.max_clients,
-                heartbeat_interval=self.config.server.heartbeat_interval
-            )
-
-            # 创建 RDT 服务器
-            self.rdt_server = RDTServer(
-                host="0.0.0.0",
-                port=9998,
-                window_size=5,
-                timeout=0.1
-            )
 
             # 注册聊天处理器
             self.nplt_server.register_chat_handler(self._handle_chat)
@@ -309,21 +318,39 @@ class Server:
     ) -> bool:
         """向客户端提议下载文件
 
+        端到端流程中的关键集成点：
+        1. 创建 RDT 会话（rdt_server.create_session）
+        2. 构造 DOWNLOAD_OFFER 消息（包含下载令牌、校验和等）
+        3. 通过 NPLT 协议发送给客户端
+        4. 客户端接收后连接 RDT 服务器准备接收文件
+
+        由 FileDownloadTool._download_via_rdt() 调用
+        参考：server/tools/file_download.py:269-300, server/main.py:305-363
+
         Args:
-            session: 客户端会话
+            session: 客户端会话（包含 client_addr）
             filename: 文件名
-            file_data: 文件数据
+            file_data: 文件数据（完整内容）
 
         Returns:
-            是否成功
+            是否成功发送 DOWNLOAD_OFFER 消息
         """
         try:
             import json
 
             self.logger.info(f"[{session.session_id[:8]}] 准备发送文件: {filename} ({len(file_data)} 字节)")
 
+            # 构造客户端 UDP 地址（用于 RDT 传输）
+            if session.client_udp_port:
+                # 使用客户端注册的 UDP 端口
+                client_addr = (session.client_addr[0], session.client_udp_port)
+                self.logger.info(f"[{session.session_id[:8]}] 使用客户端 UDP 端口: {session.client_udp_port}")
+            else:
+                # Fallback: 使用 TCP 地址（可能无法工作）
+                client_addr = session.client_addr
+                self.logger.warning(f"[{session.session_id[:8]}] 客户端未注册 UDP 端口，使用 TCP 地址: {client_addr}")
+
             # 创建 RDT 会话
-            client_addr = session.client_addr  # TCP 地址
             download_token = self.rdt_server.create_session(
                 filename=filename,
                 file_data=file_data,

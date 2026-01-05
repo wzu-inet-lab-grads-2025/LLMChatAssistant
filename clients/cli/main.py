@@ -69,6 +69,10 @@ class ClientMain:
         )
         await self.rdt_client.start()
 
+        # 向服务器注册客户端 UDP 端口（用于 RDT 文件下载）
+        udp_port = self.rdt_client.get_local_port()
+        await self._register_udp_port(udp_port)
+
         # 注册下载处理器
         self.client.download_handler = self._handle_download_offer
 
@@ -430,6 +434,31 @@ class ClientMain:
             self.logger.error(f"发送删除会话请求失败: {session_id}")
             self.ui.print_error("删除会话失败")
 
+    async def _register_udp_port(self, udp_port: int):
+        """向服务器注册客户端 UDP 端口（用于 RDT 文件传输）
+
+        Args:
+            udp_port: 客户端 UDP 端口号
+        """
+        try:
+            import json
+            from shared.protocols.nplt import MessageType
+
+            # 构造 UDP 端口注册消息
+            port_data = json.dumps({"udp_port": udp_port})
+            success = await self.client.send_message(
+                MessageType.CLIENT_UDP_PORT,
+                port_data.encode('utf-8')
+            )
+
+            if success:
+                self.logger.info(f"已向服务器注册 UDP 端口: {udp_port}")
+            else:
+                self.logger.warning(f"发送 UDP 端口注册消息失败: {udp_port}")
+
+        except Exception as e:
+            self.logger.error(f"注册 UDP 端口失败: {e}")
+
     async def _handle_download_offer(self, offer_data: dict):
         """处理下载提议
 
@@ -447,23 +476,15 @@ class ClientMain:
             # 格式化文件大小
             size_str = self._format_filesize(filesize)
 
-            # 显示下载确认
+            # 显示下载信息（自动接受）
             self.ui.print_separator()
-            self.ui.print_info(f"服务器提议发送文件: {filename}")
+            self.ui.print_info(f"📥 开始接收文件: {filename}")
             self.ui.print_info(f"文件大小: {size_str}")
             self.ui.print_info(f"MD5 校验和: {checksum}")
             self.ui.print_separator()
 
-            # 等待用户确认
-            confirm = await asyncio.to_thread(
-                self.ui.input,
-                "是否接收此文件? (y/n): "
-            )
-
-            if confirm.lower() != 'y':
-                self.logger.info(f"用户拒绝下载: {filename}")
-                self.ui.print_warning("下载已取消")
-                return
+            # 自动开始下载（无需用户确认）
+            self.logger.info(f"自动接收下载: {filename}")
 
             # 开始下载
             await self._download_file(

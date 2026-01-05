@@ -36,8 +36,17 @@ class FileDownloadTool(Tool):
 
     path_validator: Optional[object] = None  # 路径验证器
     rdt_server: Optional[object] = None  # RDT服务器实例
+    server: Optional[object] = None  # NPLT服务器实例（用于调用offer_file_download）
     http_base_url: Optional[str] = None  # HTTP下载基础URL（如 http://localhost:8080）
     client_type: str = "cli"  # 客户端类型：cli | web | desktop
+
+    # 存储后台任务引用，防止被垃圾回收
+    _background_tasks: list = None  # type: ignore[assignment]
+
+    def __post_init__(self):
+        """初始化后台任务列表"""
+        if self._background_tasks is None:
+            self._background_tasks = []
 
     def validate_args(
         self,
@@ -77,6 +86,7 @@ class FileDownloadTool(Tool):
         self,
         file_path: str,
         transport_mode: str = "auto",
+        session=None,
         **kwargs
     ) -> ToolExecutionResult:
         """执行文件下载
@@ -88,6 +98,7 @@ class FileDownloadTool(Tool):
                 - "rdt": 强制使用RDT UDP传输
                 - "http": 强制使用HTTP下载
                 - "nplt": 强制使用NPLT TCP传输
+            session: Session对象（可选，用于访问client_addr）
 
         Returns:
             ToolExecutionResult: 执行结果
@@ -127,7 +138,8 @@ class FileDownloadTool(Tool):
                 file_id=file_id,
                 filename=filename,
                 size=size,
-                transport_mode=transport_mode
+                transport_mode=transport_mode,
+                session=session
             )
 
             duration = time.time() - start_time
@@ -184,7 +196,8 @@ class FileDownloadTool(Tool):
         file_id: Optional[str],
         filename: str,
         size: int,
-        transport_mode: str
+        transport_mode: str,
+        session=None
     ) -> dict:
         """执行下载
 
@@ -194,13 +207,14 @@ class FileDownloadTool(Tool):
             filename: 文件名
             size: 文件大小
             transport_mode: 传输模式
+            session: Session对象（可选）
 
         Returns:
             下载结果字典
         """
         try:
             if transport_mode == "rdt":
-                return self._download_via_rdt(file_path, file_id, filename, size)
+                return self._download_via_rdt(file_path, file_id, filename, size, session)
             elif transport_mode == "http":
                 return self._download_via_http(file_path, file_id, filename, size)
             elif transport_mode == "nplt":
@@ -222,18 +236,34 @@ class FileDownloadTool(Tool):
         file_path: str,
         file_id: Optional[str],
         filename: str,
-        size: int
+        size: int,
+        session=None
     ) -> dict:
         """通过RDT协议下载文件
+
+        端到端流程（关键集成点）：
+        1. 读取文件数据到内存
+        2. 调用 server.offer_file_download() 发送 DOWNLOAD_OFFER 消息
+           - NPLT 消息类型：MessageType.DOWNLOAD_OFFER
+           - 包含：filename, size, checksum, download_token, server_host, server_port
+        3. server.offer_file_download() 内部调用 rdt_server.create_session() 创建 RDT 会话
+           - 生成唯一的 download_token
+           - 存储 file_data 和 client_addr
+        4. 等待 0.5 秒让客户端准备接收（连接 RDT 服务器）
+        5. 调用 rdt_server.send_file() 执行 UDP 数据包传输
+           - 使用滑动窗口协议（window_size=5, timeout=0.1s）
+           - 发送到 session.client_addr
+        6. 客户端接收文件并保存到 downloads/ 目录
 
         Args:
             file_path: 文件路径
             file_id: 文件ID
             filename: 文件名
             size: 文件大小
+            session: Session对象（包含client_addr，必需）
 
         Returns:
-            下载结果
+            下载结果字典 {"success": True, "status": "transferring", ...}
         """
         if not self.rdt_server:
             return {
@@ -241,28 +271,109 @@ class FileDownloadTool(Tool):
                 "error": "RDT服务器未初始化"
             }
 
+        if not session:
+            return {
+                "success": False,
+                "error": "缺少session对象，无法获取客户端地址"
+            }
+
         logger.info(f"[DOWNLOAD] mode=RDT file={filename} size={size}")
 
-        # 读取文件数据
-        with open(file_path, 'rb') as f:
-            file_data = f.read()
+        try:
+            import asyncio
 
-        # 创建RDT会话（注意：这里需要client_addr，实际应该从Session获取）
-        # 这里暂时返回下载令牌，实际传输由Agent协调
-        download_token = f"token_{file_id or 'unknown'}"
+            # 读取文件数据
+            with open(file_path, 'rb') as f:
+                file_data = f.read()
 
-        logger.info(f"[DOWNLOAD] RDT会话已创建 token={download_token}")
+            # 调用 server.offer_file_download() 发送 DOWNLOAD_OFFER 消息
+            # 注意：这里需要在后台异步执行，因为 execute 是同步方法
+            async def _transfer_file():
+                """异步执行文件传输"""
+                logger.info(f"[DOWNLOAD] === 后台传输任务开始执行: {filename} ===")
+                # 1. 发送下载提议
+                if self.server:
+                    success = await self.server.offer_file_download(session, filename, file_data)
+                    if not success:
+                        logger.error("[DOWNLOAD] 发送下载提议失败")
+                        return False
 
-        return {
-            "success": True,
-            "transport_mode": "rdt",
-            "file_id": file_id or "unknown",
-            "filename": filename,
-            "size": size,
-            "download_token": download_token,
-            "status": "rdt_ready",
-            "message": f"文件已准备通过RDT协议传输: {filename} ({size} 字节)"
-        }
+                    # 获取 download_token（从 RDT 服务器的最新会话）
+                    # offer_file_download 会创建会话，我们获取最新创建的
+                    if hasattr(self.rdt_server, 'sessions'):
+                        # 找到最新的会话
+                        for token, rdt_session in self.rdt_server.sessions.items():
+                            if rdt_session.filename == filename:
+                                download_token = token
+                                break
+                        else:
+                            # 未找到，使用 file_id
+                            download_token = file_id or f"token_{filename}"
+                    else:
+                        download_token = file_id or f"token_{filename}"
+                else:
+                    # Fallback: 直接创建 RDT 会话
+                    logger.warning("[DOWNLOAD] server未初始化，跳过DOWNLOAD_OFFER消息")
+                    download_token = self.rdt_server.create_session(
+                        filename=filename,
+                        file_data=file_data,
+                        client_addr=session.client_addr
+                    )
+
+                logger.info(f"[DOWNLOAD] RDT会话已创建 token={download_token}")
+
+                # 2. 等待客户端准备（0.5秒）
+                await asyncio.sleep(0.5)
+
+                # 3. 执行 RDT 传输
+                send_success = await self.rdt_server.send_file(download_token, session.client_addr)
+
+                if not send_success:
+                    logger.error(f"[DOWNLOAD] RDT传输失败 token={download_token}")
+                    return False
+
+                logger.info(f"[DOWNLOAD] RDT传输成功 token={download_token}")
+                return True
+
+            # 在后台执行传输（不阻塞当前线程）
+            try:
+                # 尝试获取当前事件循环
+                loop = asyncio.get_running_loop()
+                # 如果已有事件循环在运行，创建后台任务
+                # **重要**：必须保存 Task 对象，否则会被垃圾回收
+                task = asyncio.create_task(_transfer_file())
+                self._background_tasks.append(task)
+
+                # 添加任务完成回调，清理已完成的任务
+                def cleanup_task(t):
+                    if t in self._background_tasks:
+                        self._background_tasks.remove(t)
+
+                task.add_done_callback(cleanup_task)
+
+                logger.info(f"[DOWNLOAD] 后台传输任务已创建: {filename}")
+            except RuntimeError as e:
+                # 没有运行的事件循环，创建新的
+                logger.warning(f"[DOWNLOAD] 没有运行的事件循环，创建新的: {e}")
+                asyncio.run(_transfer_file())
+
+            # 立即返回成功（传输在后台进行）
+            return {
+                "success": True,
+                "transport_mode": "rdt",
+                "file_id": file_id or "unknown",
+                "filename": filename,
+                "size": size,
+                "status": "transferring",
+                "message": f"正在通过RDT协议传输文件: {filename} ({size} 字节)"
+            }
+
+        except Exception as e:
+            logger.error(f"[DOWNLOAD] RDT传输异常: {str(e)}")
+            return {
+                "success": False,
+                "error": f"RDT传输失败: {str(e)}"
+            }
 
     def _download_via_http(
         self,

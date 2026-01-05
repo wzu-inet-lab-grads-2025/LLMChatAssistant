@@ -36,6 +36,7 @@ class MessageType(IntEnum):
     SESSION_SWITCH = 0x15     # 切换会话
     SESSION_NEW = 0x16        # 创建新会话
     SESSION_DELETE = 0x17     # 删除会话
+    CLIENT_UDP_PORT = 0x18    # 客户端 UDP 端口注册（用于 RDT 文件传输）
 
 
 @dataclass
