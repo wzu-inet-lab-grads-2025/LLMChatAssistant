@@ -1,0 +1,18 @@
+# 高级计算机网络课程大作业
+## CLI前端
++ 正常聊天，流式传输
+  ![alt text](docs/images/image.png)
+  ![alt text](docs/images/image-1.png)
++ 文件上传
+  ![alt text](docs/images/image-2.png)
+  ![alt text](docs/images/image-4.png)
++ 自然语言描述文件，获取文件信息
+  ![alt text](docs/images/image-3.png)
+## web前端
++ 聊天
+  ![alt text](docs/images/d29a93e88ca110091ca8c1b8c8630f05.png)
++ 查看系统信息等
+  ![alt text](docs/images/8cf73f3328bb72e223f3707dee4be1c1.png)
++ 根据系统文件问答
+  ![alt text](docs/images/826ceda96e3c4768fe1f8b625de57688.png)
+  ![alt text](docs/images/fc383667b14d75d08d12784f55fd5ecb.png)
